@@ -2,7 +2,6 @@
 
 /*
 todo:
-- save as
 - backup files  (at before first save of session)
 - autosave  (alert 30?)
 - isearch
@@ -578,6 +577,19 @@ minibuffer_read(View *view, const char *prompt, const char *prefill)
 	return buf;
 }
 
+void
+save_as(View *view)
+{
+	Buffer *buf = view->buf;
+	char *new_file;
+	new_file = minibuffer_read(view, "Write file:", buf->file);
+	if (!new_file)
+		return;
+
+	buf->file = strdup(new_file);
+	save(view->buf);
+}
+
 int
 yes_or_no_p(View *view, const char *question)
 {
@@ -730,6 +742,9 @@ main(int argc, char *argv[])
 					break;
 				case CTRL('x'):
 					exchange_point_mark(view->buf);
+					break;
+				case CTRL('w'):
+					save_as(view);
 					break;
 				default:
 					message("unknown key C-x %d", ch2);
