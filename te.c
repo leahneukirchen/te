@@ -4,9 +4,15 @@
 todo:
 - saving
 - minibuffer
+- save as
+- backup files  (at before first save of session)
+- autosave  (alert 30?)
 - isearch
 - prefix commands
 - pipe region
+- search and replace with pcre2
+- xterm title
+- movement by paragraphs (can we bind C-up, C-down?)
 */
 
 #include <stdio.h>
@@ -249,6 +255,8 @@ insert_char(Buffer *buf, int ch)
 	size_t point = text_mark_get(buf->text, buf->point);
 	const char c = {ch};
 	text_insert(buf->text, point, &c, 1);
+
+	update_target_column(buf);
 }
 
 void
@@ -265,6 +273,8 @@ backspace(Buffer *buf)
 
 	text_delete(buf->text, prev, point - prev);
 	buf->point = text_mark_set(buf->text, prev);
+
+	update_target_column(buf);
 }
 
 void
