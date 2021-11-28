@@ -505,11 +505,11 @@ exchange_point_mark(Buffer *buf)
 }
 
 int
-main()
+main(int argc, char *argv[])
 {
 	setlocale(LC_ALL, "");  // XXX force UTF-8 somehow for ncurses to work
 
-	Text *text = text_load("README.md");
+	Text *text = text_load(argc == 2 ? argv[1] : "README.md");
 	Buffer *buf = malloc (sizeof *buf);
 	View *view = malloc (sizeof *view);
 
