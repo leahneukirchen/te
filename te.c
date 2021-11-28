@@ -675,17 +675,17 @@ main(int argc, char *argv[])
 	buf->modified = 0;
 	array_init_sized(&buf->point_history, sizeof (Mark));
 
-	view->buf = buf;
-	view->top = 0;
-	view->end = 0;
-	getmaxyx(stdscr, view->lines, view->cols);
-
 	initscr();
 	raw();
 	noecho();
 	nonl();
 	keypad(stdscr, TRUE);
 	meta(stdscr, TRUE);
+
+	view->buf = buf;
+	view->top = 0;
+	view->end = 0;
+	getmaxyx(stdscr, view->lines, view->cols);
 
 	while (!quit) {
 		getmaxyx(stdscr, view->lines, view->cols);
