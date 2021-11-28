@@ -2,7 +2,7 @@
 
 /*
 todo:
-- saving
+- C-g
 - minibuffer
 - save as
 - backup files  (at before first save of session)
@@ -12,6 +12,7 @@ todo:
 - pipe region
 - search and replace with pcre2
 - xterm title
+- C-z
 - movement by paragraphs (can we bind C-up, C-down?)
 */
 
@@ -20,6 +21,7 @@ todo:
 #include <stdlib.h>
 #include <stdarg.h>
 #include <locale.h>
+#include <errno.h>
 
 #include <ncurses.h>
 
@@ -40,6 +42,7 @@ typedef struct {
 	Mark mark;
 	size_t target_column;
 	Array point_history;
+	int modified;
 } Buffer;
 
 typedef struct {
@@ -113,7 +116,8 @@ view_render(View *view)
 		mvprintw(line, 0, "~");
 	}
 
-	mvprintw(lines - 2, 0, "-- %s -- L%ld C%ld B%ld/%ld",
+	mvprintw(lines - 2, 0, "--%s- %s -- L%ld C%ld B%ld/%ld",
+	    view->buf->modified ? "**" : "--",
 	    view->buf->file,
 	    lineno,
 	    point - bol_point + 1,
@@ -238,6 +242,8 @@ move_char(Buffer *buf, int off)
 static void
 record_undo(Buffer *buf)
 {
+	buf->modified = 1;
+
 	size_t point = text_mark_get(buf->text, buf->point);
 	array_push(&buf->point_history, &point);
 
@@ -383,7 +389,8 @@ kill_region_save(View *view)
 	int ch = getch();
 	if (ch != ERR)
 		ungetch(ch);
-	cbreak();  // undo halfdelay
+	nocbreak();  // undo halfdelay
+	raw();
 
 	buf->point = point;
 }
@@ -515,36 +522,66 @@ exchange_point_mark(Buffer *buf)
 	buf->point = t;
 }
 
+void
+save(Buffer *buf)
+{
+	if (text_save_method(buf->text, buf->file, TEXT_SAVE_ATOMIC)) {
+		message("Wrote %s", buf->file);
+		buf->modified = 0;
+	} else {
+		alert("ERROR: Saving failed! %s: %s", buf->file, strerror(errno));
+	}
+}
+
+int quit;
+
+void
+want_quit(Buffer *buf) {
+	if (buf->modified == 1) {
+		alert("Unsaved file %s", buf->file);
+		buf->modified++;
+	} else {
+		quit = 1;
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
 	setlocale(LC_ALL, "");  // XXX force UTF-8 somehow for ncurses to work
+	message("");
 
-	Text *text = text_load(argc == 2 ? argv[1] : "README.md");
+	const char *file = argc == 2 ? argv[1] : "README.md";
+	Text *text = text_load(file);
+	if (!text) {
+		text = text_load(0);
+		if (errno == ENOENT)
+			message("(New file)");
+		else
+			alert("Error opening %s: %s", file, strerror(errno));
+	}
 	Buffer *buf = malloc (sizeof *buf);
 	View *view = malloc (sizeof *view);
 
-	buf->file = "README.md";
+	buf->file = file;
 	buf->text = text;
 	buf->point = buf->mark = text_mark_set(text, 0);
 	buf->target_column = 0;
+	buf->modified = 0;
 	array_init_sized(&buf->point_history, sizeof (Mark));
 
 	view->buf = buf;
 	view->top = 0;
 	view->end = 0;
 	getmaxyx(stdscr, view->lines, view->cols);
-	message("");
 
 	initscr();
 	raw();
 	noecho();
 	nonl();
-        cbreak();
 	keypad(stdscr, TRUE);
 	meta(stdscr, TRUE);
 
-	int quit = 0;
 	while (!quit) {
 		getmaxyx(stdscr, view->lines, view->cols);
 
@@ -619,10 +656,10 @@ main(int argc, char *argv[])
 				int ch2 = getch();
 				switch(ch2) {
 				case CTRL('c'):
-					quit = 1;
+					want_quit(view->buf);
 					break;
 				case CTRL('s'):
-					message("NYI");
+					save(view->buf);
 					break;
 				case CTRL('x'):
 					exchange_point_mark(view->buf);
