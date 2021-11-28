@@ -2,7 +2,6 @@
 
 /*
 todo:
-- minibuffer
 - save as
 - backup files  (at before first save of session)
 - autosave  (alert 30?)
@@ -532,33 +531,79 @@ save(Buffer *buf)
 	}
 }
 
-int quit;
+char *
+minibuffer_read(View *view, const char *prompt, const char *prefill)
+{
+	// XXX use proper text for buffer, allow movement
 
-void
-want_quit(Buffer *buf) {
-	if (buf->modified == 1) {
-		alert("Unsaved file %s", buf->file);
-		buf->modified++;
-	} else {
-		quit = 1;
+	static char buf[1024];
+	strncpy(buf, prefill, sizeof buf);  // want zeroing
+
+	int done = 0;
+	while (!done) {
+		move(view->lines - 1, 0);
+		clrtoeol();
+		printw("%s %s", prompt, buf);
+		refresh();
+
+		int ch = getch();
+		switch (ch) {
+		case CTRL('j'):
+		case CTRL('m'):
+			done = 1;
+			break;
+		case KEY_BACKSPACE:
+			{
+				size_t l = strlen(buf);
+				if (l)
+					buf[l-1] = 0;
+			}
+			break;
+		case CTRL('g'):
+			alert("Quit");
+			return 0;
+		default:
+			if (0x20 <= ch && ch <= 0x7f) {
+				size_t l = strlen(buf);
+				buf[l] = ch;
+				buf[l+1] = 0;
+			} else {
+				message("unknown key %d", ch);
+				view_render(view);
+				sleep(1);
+			}
+		}
+	}
+
+	return buf;
+}
+
+int
+yes_or_no_p(View *view, const char *question)
+{
+	while (1) {
+		char *answer = minibuffer_read(view, question, "");
+		if (!answer || strcasecmp(answer, "no") == 0)
+			return 0;
+		if (strcasecmp(answer, "yes") == 0)
+			return 1;
+		alert("Please answer yes or no.");
+		view_render(view);
+		sleep(1);
 	}
 }
 
-char *minibuffer_default = "default";
-char *minibuffer_cancel = "cancel";
+int quit;
 
-char *minibuffer_read(View *view, const char *prompt, const char *prefill)
-{
-	// XXX use proper text for buffer;
-
-	char buf[1024];
-	strcpy(buf, prefill);
-
-	mvprintw(view->lines - 1, 0, "%s %s", prompt, buf);
-
-	getch();
-
-	return 0;
+void
+want_quit(View *view) {
+	if (view->buf->modified) {
+		if (yes_or_no_p(view,
+		    "Modified buffers exist; really exit? (yes or no)"))
+			quit = 1;
+	} else {
+		quit = 1;
+	}
 }
 
 int
@@ -602,9 +647,6 @@ main(int argc, char *argv[])
 		getmaxyx(stdscr, view->lines, view->cols);
 
 		view_render(view);
-
-		minibuffer_read(view, "Test minibuffer:", "default");
-
 		message("");
 
 		int ch = getch();
@@ -678,7 +720,7 @@ main(int argc, char *argv[])
 				int ch2 = getch();
 				switch(ch2) {
 				case CTRL('c'):
-					want_quit(view->buf);
+					want_quit(view);
 					break;
 				case CTRL('g'):
 					alert("Quit");
