@@ -2,7 +2,6 @@
 
 /*
 todo:
-- C-g
 - minibuffer
 - save as
 - backup files  (at before first save of session)
@@ -545,6 +544,23 @@ want_quit(Buffer *buf) {
 	}
 }
 
+char *minibuffer_default = "default";
+char *minibuffer_cancel = "cancel";
+
+char *minibuffer_read(View *view, const char *prompt, const char *prefill)
+{
+	// XXX use proper text for buffer;
+
+	char buf[1024];
+	strcpy(buf, prefill);
+
+	mvprintw(view->lines - 1, 0, "%s %s", prompt, buf);
+
+	getch();
+
+	return 0;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -586,6 +602,9 @@ main(int argc, char *argv[])
 		getmaxyx(stdscr, view->lines, view->cols);
 
 		view_render(view);
+
+		minibuffer_read(view, "Test minibuffer:", "default");
+
 		message("");
 
 		int ch = getch();
@@ -612,6 +631,9 @@ main(int argc, char *argv[])
 		case CTRL('f'):
 		case KEY_RIGHT:
 			move_char(view->buf, +1);
+			break;
+		case CTRL('g'):
+			alert("Quit");
 			break;
 		case CTRL('j'):
 		case CTRL('m'):
@@ -658,6 +680,9 @@ main(int argc, char *argv[])
 				case CTRL('c'):
 					want_quit(view->buf);
 					break;
+				case CTRL('g'):
+					alert("Quit");
+					break;
 				case CTRL('s'):
 					save(view->buf);
 					break;
@@ -672,9 +697,7 @@ main(int argc, char *argv[])
 			break;
 		case CTRL('['): // M-...
 			{
-				nodelay(stdscr, TRUE);
 				int ch2 = getch();
-				nodelay(stdscr, FALSE);
 
 				switch (ch2) {
 				case '<':
@@ -682,6 +705,9 @@ main(int argc, char *argv[])
 					break;
 				case '>':
 					end_of_buffer(view);
+					break;
+				case CTRL('g'):
+					alert("Quit");
 					break;
 				case 'v':
 					view_scroll(view, -(view->lines-2-2));
