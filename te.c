@@ -5,6 +5,8 @@ todo:
 - saving
 - minibuffer
 - isearch
+- prefix commands
+- pipe region
 */
 
 #include <stdio.h>
@@ -59,28 +61,49 @@ view_render(View *view)
 
 	char buf[lines*cols*4];
 	size_t top = view->top;
-	size_t len = text_bytes_get(view->buf->text, top, sizeof buf, buf);
-	size_t top_lineno = text_lineno_by_pos(view->buf->text, top);
+	size_t len = text_bytes_get(view->buf->text, top, sizeof buf - 1, buf);
+	buf[len] = 0;
 
-	char *bol = buf;
-	char *eol = buf;
-	int i;
-	for (i = 0; i < lines - 2; i++) {
-		eol = memchr(bol, '\n', len - (bol - buf));
-		if (!eol)
-			eol = buf + len - 1;
-		// XXX proper display logic
-		mvwaddnstr(stdscr, i, 0, bol, MIN(cols, eol - bol));
-		if (eol == buf + len - 1) {
-			i++;
-			break;
+	int line = 0;
+	int col = 0;
+	move(0, 0);
+	int cur_y = lines, cur_x = cols;
+	size_t i;
+	for (i = 0; i < len; i++) {
+		if (i == point - view->top) {
+			getyx(stdscr, cur_y, cur_x);
 		}
-		bol = eol + 1;
+		if (buf[i] == '\n') {
+			// line++;
+			getyx(stdscr, line, col);
+			move(line + 1, 0);
+		} else {
+			getyx(stdscr, line, col);
+			if (col == cols - 1) {
+				addch('\\');
+				if (i == point - view->top) {
+					getyx(stdscr, cur_y, cur_x);
+				}
+			}
+			addch((unsigned char)buf[i]);
+		}
 	}
-	view->end = top + (eol - buf);
+	view->end = top + i;
 
-	for (; i < lines - 2; i++) {
-		mvprintw(i, 0, "~");
+	if (point == text_size(view->buf->text)) {
+		getyx(stdscr, cur_y, cur_x);
+		if (buf[i-1] == '\n') {
+			addch(' ');
+			line++;
+		} else {
+			// higlight non-EOL file end
+			addstr("\xE2\x97\x8A");  // U+25CA LOZENGE
+		}
+	}
+
+	line++;
+	for (; line < lines - 2; line++) {
+		mvprintw(line, 0, "~");
 	}
 
 	mvprintw(lines - 2, 0, "-- %s -- L%ld C%ld B%ld/%ld",
@@ -93,9 +116,29 @@ view_render(View *view)
 	mvchgat(lines - 2, 0, view->cols, A_REVERSE, 0, 0);
 	mvprintw(lines - 1, 0, "%s", message_buf);
 
-	move(lineno - top_lineno, point - bol_point);
+	move(cur_y, cur_x);
 
 	refresh();
+}
+
+void
+message(const char *fmt, ...)
+{
+	va_list ap;
+        va_start(ap, fmt);
+	vsnprintf(message_buf, sizeof message_buf, fmt, ap);
+        va_end(ap);
+}
+
+void
+alert(const char *fmt, ...)
+{
+	flash();
+
+	va_list ap;
+        va_start(ap, fmt);
+	vsnprintf(message_buf, sizeof message_buf, fmt, ap);
+        va_end(ap);
 }
 
 static size_t
@@ -240,26 +283,6 @@ delete(Buffer *buf)
 }
 
 void
-message(const char *fmt, ...)
-{
-	va_list ap;
-        va_start(ap, fmt);
-	vsnprintf(message_buf, sizeof message_buf, fmt, ap);
-        va_end(ap);
-}
-
-void
-alert(const char *fmt, ...)
-{
-	flash();
-
-	va_list ap;
-        va_start(ap, fmt);
-	vsnprintf(message_buf, sizeof message_buf, fmt, ap);
-        va_end(ap);
-}
-
-void
 move_bol(Buffer *buf)
 {
 	size_t point = text_mark_get(buf->text, buf->point);
@@ -377,12 +400,11 @@ view_scroll(View *view, int off)
 	view->top = text_pos_by_lineno(view->buf->text, lineno);
 	if (view->top == EPOS) {
 		size_t point = text_mark_get(view->buf->text, view->buf->point);
-		if (point == text_size(view->buf->text) - 1) {
+		if (point == text_size(view->buf->text)) {
 			alert("End of buffer");
 		} else {
-			view->buf->point =
-			    text_mark_set(view->buf->text,
-				text_size(view->buf->text) - 1);
+			view->buf->point = text_mark_set(view->buf->text,
+			    text_size(view->buf->text));
 		}
 		update_target_column(view->buf);
 		view->top = top;   // restore
@@ -392,13 +414,11 @@ view_scroll(View *view, int off)
 	view_render(view);  // compute end
 
 	size_t point = text_mark_get(view->buf->text, view->buf->point);
-	message("[%d %ld:%ld %ld]", off, view->top, view->end, point);
 
 	if (off > 0 && point < view->top) {  // scrolled down too much
 		view->buf->point = text_mark_set(view->buf->text, view->top);
 		update_target_column(view->buf);
 	} else if (off < 0 && view->end < point) {  // scrolled up too much
-		message("top:%ld end:%ld point:%ld", view->top, view->end, point);
 		view->buf->point = text_mark_set(view->buf->text,
 		    text_line_start(view->buf->text, view->end));
 		update_target_column(view->buf);
@@ -419,7 +439,7 @@ void
 end_of_buffer(View *view)
 {
 	view->buf->point = text_mark_set(view->buf->text,
-	    text_size(view->buf->text) - 1);
+	    text_size(view->buf->text));
 	recenter(view);   // XXX improve
 }
 
