@@ -10,7 +10,6 @@ todo:
 - search and replace with pcre2
 - xterm title
 - C-z
-- movement by paragraphs (can we bind C-up, C-down?)
 */
 
 #include <stdio.h>
@@ -234,6 +233,31 @@ move_char(Buffer *buf, int off)
 
 	buf->point = text_mark_set(buf->text, point);
 	update_target_column(buf);
+}
+
+void
+move_paragraph(Buffer *buf, int off)
+{
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	while (off) {
+		size_t old_point = point;
+
+		if (off > 0) {
+			off--;
+			point = text_paragraph_next(buf->text, point);
+		} else {
+			off++;
+			point = text_paragraph_prev(buf->text, point);
+		}
+
+		if (point == old_point) {
+			flash();
+			break;
+		}
+	}
+
+	buf->point = text_mark_set(buf->text, point);
 }
 
 static void
@@ -763,6 +787,14 @@ main(int argc, char *argv[])
 				case '>':
 					end_of_buffer(view);
 					break;
+				case '{':
+				kUP5:
+					move_paragraph(view->buf, -1);
+					break;
+				case '}':
+				kDN5:
+					move_paragraph(view->buf, +1);
+					break;
 				case CTRL('g'):
 					alert("Quit");
 					break;
@@ -779,7 +811,15 @@ main(int argc, char *argv[])
 			}
 			break;
 		default:
-			if (0x20 <= ch && ch <= 0x7f) {
+			if (ch > KEY_MAX) {
+				const char *name = keyname(ch);
+				if (strcmp(name, "kUP5") == 0)
+					goto kUP5;
+				else if (strcmp(name, "kDN5") == 0)
+					goto kDN5;
+				else
+					goto unknown;
+			} else if (0x20 <= ch && ch <= 0x7f) {
 				insert_char(view->buf, ch);
 			} else if (ch <= 0xff && ISUTF8(ch)) {
 				insert_char(view->buf, ch);
@@ -794,7 +834,8 @@ main(int argc, char *argv[])
 				nodelay(stdscr, FALSE);
 
 			} else {
-				alert("unknown key %d", ch);
+			unknown:
+				alert("unknown key %d %s", ch, keyname(ch));
 			}
 			break;
 		}
