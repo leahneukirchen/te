@@ -583,6 +583,7 @@ minibuffer_read(View *view, const char *prompt, const char *prefill)
 		case CTRL('m'):
 			done = 1;
 			break;
+		case CTRL('?'):
 		case KEY_BACKSPACE:
 			{
 				size_t l = strlen(buf);
@@ -709,6 +710,7 @@ main(int argc, char *argv[])
 			quit = 1;
 			break;
 		case CTRL('d'):
+		case KEY_DC:
 			delete(view->buf);
 			break;
 		case CTRL('e'):
@@ -760,6 +762,7 @@ main(int argc, char *argv[])
 			undo(view->buf);
 			break;
 		case KEY_BACKSPACE:
+		case 127:
 			backspace(view->buf);
 			break;
 		case CTRL('x'):
@@ -830,9 +833,10 @@ main(int argc, char *argv[])
 					goto kDN5;
 				else
 					goto unknown;
-			} else if (0x20 <= ch && ch <= 0x7f) {
+			} else if (0x20 <= ch && ch < 0x7f) {
 				insert_char(view->buf, ch);
-			} else if (ch <= 0xff && ISUTF8(ch)) {
+				message("char %d",ch);
+			} else if (ch >= 0x80 && ch <= 0xff && ISUTF8(ch)) {
 				insert_char(view->buf, ch);
 				nodelay(stdscr, TRUE);
 				int ch2;
