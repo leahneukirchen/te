@@ -9,15 +9,15 @@ todo:
 - pipe region
 - search and replace with pcre2
 - xterm title
-- C-z
 */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <locale.h>
 #include <errno.h>
+#include <locale.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <ncurses.h>
 
@@ -554,6 +554,14 @@ save(Buffer *buf)
 	}
 }
 
+void
+background(View *view)
+{
+	endwin();
+	raise(SIGSTOP);
+	view_render(view);
+}
+
 char *
 minibuffer_read(View *view, const char *prompt, const char *prefill)
 {
@@ -744,6 +752,9 @@ main(int argc, char *argv[])
 			break;
 		case CTRL('y'):
 			yank(view->buf);
+			break;
+		case CTRL('z'):
+			background(view);
 			break;
 		case CTRL('_'):
 			undo(view->buf);
