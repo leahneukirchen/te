@@ -74,9 +74,10 @@ view_render(View *view)
 			getyx(stdscr, cur_y, cur_x);
 		}
 		if (buf[i] == '\n') {
-			// line++;
 			getyx(stdscr, line, col);
 			move(line + 1, 0);
+			if (line == lines - 3)
+				break;
 		} else {
 			getyx(stdscr, line, col);
 			if (col == cols - 1) {
