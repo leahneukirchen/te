@@ -663,6 +663,7 @@ yes_or_no_p(View *view, const char *question)
 {
 	while (1) {
 		char *answer = minibuffer_read(view, question, "");
+		message("");
 		if (!answer || strcasecmp(answer, "no") == 0)
 			return 0;
 		if (strcasecmp(answer, "yes") == 0)
