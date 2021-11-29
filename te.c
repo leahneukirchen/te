@@ -676,6 +676,41 @@ quoted_insert(Buffer *buf)
 	}
 }
 
+void
+transpose_chars(Buffer *buf)
+{
+	record_undo(buf);
+
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	char b = 0;
+	text_byte_get(buf->text, point, &b);
+	if (b == '\n')
+		point = text_char_prev(buf->text, point);
+
+	/* [prev].[next] -> [next].[prev] */
+
+	size_t prev = text_char_prev(buf->text, point);
+	size_t next = text_char_next(buf->text, point);
+
+	char prevbuf[4], nextbuf[4];
+	size_t prevlen, nextlen;
+	// XXX assert lengths
+	prevlen = text_bytes_get(buf->text, prev, point - prev, prevbuf);
+	nextlen = text_bytes_get(buf->text, point, next - point, nextbuf);
+
+	text_delete(buf->text, prev, prevlen + nextlen);
+	text_insert(buf->text, prev, nextbuf, nextlen);
+	text_insert(buf->text, prev + nextlen, prevbuf, prevlen);
+
+	point = prev + nextlen;
+	text_byte_get(buf->text, point, &b);
+	if (b == '\n')
+		point = text_char_next(buf->text, point);
+
+	buf->point = text_mark_set(buf->text, point);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -769,6 +804,9 @@ main(int argc, char *argv[])
 			break;
 		case CTRL('q'):
 			quoted_insert(view->buf);
+			break;
+		case CTRL('t'):
+			transpose_chars(view->buf);
 			break;
 		case CTRL('v'):
 		case KEY_NPAGE:
