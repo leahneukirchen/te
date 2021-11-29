@@ -151,21 +151,11 @@ alert(const char *fmt, ...)
         va_end(ap);
 }
 
-static size_t
-mark_column(Buffer *buf, Mark mark)
-{
-	size_t pos = text_mark_get(buf->text, mark);
-	if (pos == EPOS)
-		return 0;
-	size_t bol = text_line_begin(buf->text, pos);
-
-	return pos - bol;
-}
-
 static void
 update_target_column(Buffer *buf)
 {
-	buf->target_column = mark_column(buf, buf->point);
+	size_t point = text_mark_get(buf->text, buf->point);
+	buf->target_column = text_line_width_get(buf->text, point);
 }
 
 void
@@ -203,7 +193,7 @@ move_line(View *view, int off)
 	}
 
 	if (buf->target_column)
-		point = text_line_offset(buf->text, point, buf->target_column);
+		point = text_line_width_set(buf->text, point, buf->target_column);
 
 	buf->point = text_mark_set(buf->text, point);
 
@@ -467,7 +457,7 @@ view_scroll(View *view, int off)
 		    text_line_start(view->buf->text, view->end));
 		update_target_column(view->buf);
 	} else if (view->buf->target_column) {  // keep column on same page
-		point = text_line_offset(view->buf->text, point, view->buf->target_column);
+		point = text_line_width_set(view->buf->text, point, view->buf->target_column);
 		view->buf->point = text_mark_set(view->buf->text, point);
 	}
 }
