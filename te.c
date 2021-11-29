@@ -618,8 +618,8 @@ minibuffer_read(View *view, const char *prompt, const char *prefill)
 		case CTRL('m'):
 			done = 1;
 			break;
-		case CTRL('?'):
 		case KEY_BACKSPACE:
+		case KEY_DEL:
 			{
 				size_t l = strlen(buf);
 				if (l)
@@ -630,7 +630,7 @@ minibuffer_read(View *view, const char *prompt, const char *prefill)
 			alert("Quit");
 			return 0;
 		default:
-			if (0x20 <= ch && ch <= 0x7f) {
+			if (0x20 <= ch && ch < 0x7f) {
 				size_t l = strlen(buf);
 				buf[l] = ch;
 				buf[l+1] = 0;
