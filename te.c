@@ -949,6 +949,8 @@ goto_line(View *view)
 			point = text_size(buf->text);
 	}
 	view->buf->point = text_mark_set(buf->text, point);
+
+	recenter(view);
 }
 
 int
