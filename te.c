@@ -789,6 +789,36 @@ backward_kill_word(Buffer *buf)
 	buf->point = text_mark_set(buf->text, from);
 }
 
+void
+capitalize_word(Buffer *buf)
+{
+	record_undo(buf);
+
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	Iterator it = text_iterator_get(buf->text, point);
+	char c;
+	text_iterator_byte_get(&it, &c);
+	while (!isword((unsigned char)c))
+		text_iterator_char_next(&it, &c);
+
+	if ('a' <= c && c <= 'z') {   // XXX ASCII only
+		c &= ~0x20;
+		text_delete(buf->text, it.pos, 1);
+		text_insert(buf->text, it.pos, &c, 1);
+	}
+
+	while (text_iterator_char_next(&it, &c) && isword((unsigned char)c)) {
+		if ('A' <= c && c < 'Z') {
+			c |= 0x20;
+			text_delete(buf->text, it.pos, 1);
+			text_insert(buf->text, it.pos, &c, 1);
+		}
+	}
+
+	buf->point = text_mark_set(buf->text, it.pos);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -968,6 +998,9 @@ main(int argc, char *argv[])
 				case 'b':
 				kLFT5:
 					backward_word(view->buf);
+					break;
+				case 'c':
+					capitalize_word(view->buf);
 					break;
 				case 'd':
 					kill_word(view->buf);
