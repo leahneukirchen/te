@@ -50,6 +50,7 @@ view_render(View *view)
 	int cols = view->cols;
 
 	erase();
+	move(0, 0);
 
 	size_t point = text_mark_get(view->buf->text, view->buf->point);
 	size_t lineno = text_lineno_by_pos(view->buf->text, point);
@@ -57,17 +58,24 @@ view_render(View *view)
 
 	char buf[lines*cols*4 + 8];
 	size_t top = view->top;
+
+	if (point > 0 && (int)(point - view->top) > (lines-3)*(cols-1)) {
+		top = point - (lines-3)*(cols-1);
+		attron(A_REVERSE);
+		addstr("...");
+		attroff(A_REVERSE);
+	}
+
 	size_t len = text_bytes_get(view->buf->text, top, sizeof buf - 1, buf);
 	buf[len] = 0;
 
 	int line = 0;
 	int col = 0;
-	move(0, 0);
 	int cur_y = lines, cur_x = cols;
 	size_t i;
 	mbstate_t mbstate = { 0 };
 	for (i = 0; i < len; i++) {
-		int on_point = i == point - view->top;
+		int on_point = i == point - top;
 		if (on_point)
 			getyx(stdscr, cur_y, cur_x);
 		if (buf[i] == '\n') {
@@ -79,8 +87,11 @@ view_render(View *view)
 			getyx(stdscr, line, col);
 			if (col == cols - 1) {
 				addch('\\');
+				move(line + 1, 0);
 				if (on_point)
 					getyx(stdscr, cur_y, cur_x);
+				if (line == lines - 3)
+					break;
 			}
 
 			if ((unsigned char)buf[i] >= 0x80) {
