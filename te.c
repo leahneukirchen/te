@@ -756,6 +756,39 @@ forward_word(Buffer *buf)
 	buf->point = text_mark_set(buf->text, it.pos);
 }
 
+void
+kill_word(Buffer *buf)
+{
+	record_undo(buf);
+
+	size_t from = text_mark_get(buf->text, buf->point);
+	forward_word(buf);
+	size_t to = text_mark_get(buf->text, buf->point);
+
+	save_range(buf, from, to);
+	text_delete(buf->text, from, to - from);
+	// XXX GNU emacs doesn't delete beyond EOL
+	// XXX append to kill ring
+
+	buf->point = text_mark_set(buf->text, from);
+}
+
+void
+backward_kill_word(Buffer *buf)
+{
+	record_undo(buf);
+
+	size_t to = text_mark_get(buf->text, buf->point);
+	backward_word(buf);
+	size_t from = text_mark_get(buf->text, buf->point);
+
+	save_range(buf, from, to);
+	text_delete(buf->text, from, to - from);
+	// XXX append to kill ring
+
+	buf->point = text_mark_set(buf->text, from);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -927,6 +960,9 @@ main(int argc, char *argv[])
 				kLFT5:
 					backward_word(view->buf);
 					break;
+				case 'd':
+					kill_word(view->buf);
+					break;
 				case 'f':
 				kRIT5:
 					forward_word(view->buf);
@@ -937,8 +973,13 @@ main(int argc, char *argv[])
 				case 'w':
 					kill_region_save(view);
 					break;
+				case KEY_BACKSPACE:
+				case KEY_DEL:
+					backward_kill_word(view->buf);
+					break;
 				default:
-					message("unknown key M-%d", ch2);
+					message("unknown key M-%d %s",
+					    ch2, keyname(ch2));
 					break;
 				}
 			}
