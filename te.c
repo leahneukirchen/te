@@ -59,7 +59,7 @@ view_render(View *view)
 	char buf[lines*cols*4 + 8];
 	size_t top = view->top;
 
-	if (point > 0 && (int)(point - view->top) > (lines-3)*(cols-1)) {
+	if ((int)(point - bol_point) > (lines-3)*(cols-1)) {
 		top = point - (lines-3)*(cols-1);
 		attron(A_REVERSE);
 		addstr("...");
