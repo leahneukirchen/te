@@ -1098,6 +1098,9 @@ main(int argc, char *argv[])
 				}
 			}
 			break;
+		case KEY_RESIZE:
+			/* ignore */
+			break;
 		default:
 			if (ch > KEY_MAX) {
 				const char *name = keyname(ch);
