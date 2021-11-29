@@ -887,6 +887,23 @@ magic_tab(Buffer *buf)
 	free(old_indent);
 }
 
+void
+insert_byte(View *view)
+{
+	char *answer = minibuffer_read(view, "Insert byte (hex):", "");
+	if (!answer || !*answer)
+		return;
+
+	char *rest;
+	long byte = strtol(answer, &rest, 16);
+	if (*rest != 0 || byte < 0 || byte > 0xff) {
+		alert("Invalid input");
+		return;
+	}
+
+	insert_char(view->buf, byte);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1020,6 +1037,9 @@ main(int argc, char *argv[])
 			{
 				int ch2 = getch();
 				switch(ch2) {
+				case '8':
+					insert_byte(view);
+					break;
 				case 'u':
 					undo(view->buf);
 					break;
