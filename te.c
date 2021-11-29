@@ -9,7 +9,7 @@
 #include <string.h>
 #include <wchar.h>
 
-#include <ncurses.h>
+#include <curses.h>
 #define KEY_DEL 0177
 
 #include "vis/array.h"
@@ -110,9 +110,8 @@ view_render(View *view)
 				}
 
 				/* UTF-8 is valid, print at once */
-				addch((unsigned char)buf[i]);
-				while (!ISUTF8(buf[i+1]))
-					addch((unsigned char)buf[++i]);
+				addnstr(buf+i, len);
+				i += len - 1;
 			} else if (buf[i] != '\t' && 0x00 <= buf[i] && buf[i] < 0x20) {
 				attron(A_BOLD);
 				addch('^');
