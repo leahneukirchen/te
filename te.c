@@ -711,6 +711,51 @@ transpose_chars(Buffer *buf)
 	buf->point = text_mark_set(buf->text, point);
 }
 
+static int
+isword(unsigned char c)
+{
+	return (
+	    c == '$' ||
+	    c == '%' ||
+	    c == '\'' ||
+	    ('0' <= c && c <= '9') ||
+	    ('A' <= c && c <= 'Z') ||
+	    ('a' <= c && c <= 'z') ||
+	    0x80 <= c   /* simplification */
+	);
+}
+
+void
+backward_word(Buffer *buf)
+{
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	char c;
+	Iterator it = text_iterator_get(buf->text, point);
+	while (text_iterator_char_prev(&it, &c) && !isword((unsigned char)c))
+		;
+	while (text_iterator_char_prev(&it, &c) && isword((unsigned char)c))
+		;
+	text_iterator_char_next(&it, &c);
+
+	buf->point = text_mark_set(buf->text, it.pos);
+}
+
+void
+forward_word(Buffer *buf)
+{
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	char c;
+	Iterator it = text_iterator_get(buf->text, point);
+	while (text_iterator_char_next(&it, &c) && !isword((unsigned char)c))
+		;
+	while (text_iterator_char_next(&it, &c) && isword((unsigned char)c))
+		;
+
+	buf->point = text_mark_set(buf->text, it.pos);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -878,6 +923,14 @@ main(int argc, char *argv[])
 				case CTRL('g'):
 					alert("Quit");
 					break;
+				case 'b':
+				kLFT5:
+					backward_word(view->buf);
+					break;
+				case 'f':
+				kRIT5:
+					forward_word(view->buf);
+					break;
 				case 'v':
 					view_scroll(view, -(view->lines-2-2));
 					break;
@@ -897,6 +950,10 @@ main(int argc, char *argv[])
 					goto kUP5;
 				else if (strcmp(name, "kDN5") == 0)
 					goto kDN5;
+				else if (strcmp(name, "kLFT5") == 0)
+					goto kLFT5;
+				else if (strcmp(name, "kRIT5") == 0)
+					goto kRIT5;
 				else
 					goto unknown;
 			} else if (0x20 <= ch && ch < 0x7f) {
