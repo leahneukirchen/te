@@ -1,16 +1,5 @@
 /* te - tiny emacs */
 
-/*
-todo:
-- backup files  (at before first save of session)
-- autosave  (alert 30?)
-- isearch
-- prefix commands
-- pipe region
-- search and replace with pcre2
-- xterm title
-*/
-
 #include <errno.h>
 #include <locale.h>
 #include <signal.h>
@@ -92,7 +81,20 @@ view_render(View *view)
 					getyx(stdscr, cur_y, cur_x);
 				}
 			}
-			addch((unsigned char)buf[i]);
+
+			if (buf[i] != '\t' && 0x00 <= buf[i] && buf[i] < 0x20) {
+				attron(A_BOLD);
+				addch('^');
+				addch('@' + buf[i]);
+				attroff(A_BOLD);
+			} else if (buf[i] == 0x7f) {
+				attron(A_BOLD);
+				addch('^');
+				addch('?');
+				attroff(A_BOLD);
+			} else {
+				addch((unsigned char)buf[i]);
+			}
 		}
 	}
 	view->end = top + i;
@@ -652,6 +654,26 @@ want_quit(View *view) {
 	}
 }
 
+void
+quoted_insert(Buffer *buf)
+{
+	int ch = getch();
+	if (ch == ERR)
+		return;
+
+	if (0x00 <= ch && ch <= 0x7f) {
+		// insert any ASCII byte raw
+		insert_char(buf, ch);
+	} else if (ch == KEY_BACKSPACE) {
+		insert_char(buf, 0177);
+	} else if (0x80 <= ch && ch <= 0xff) {
+		// let default insert deal with UTF-8 etc.
+		ungetch(ch);
+	} else {
+		alert("Not an ASCII byte");
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -742,6 +764,9 @@ main(int argc, char *argv[])
 		case CTRL('p'):
 		case KEY_UP:
 			move_line(view, -1);
+			break;
+		case CTRL('q'):
+			quoted_insert(view->buf);
 			break;
 		case CTRL('v'):
 		case KEY_NPAGE:
@@ -836,7 +861,6 @@ main(int argc, char *argv[])
 					goto unknown;
 			} else if (0x20 <= ch && ch < 0x7f) {
 				insert_char(view->buf, ch);
-				message("char %d",ch);
 			} else if (ch >= 0x80 && ch <= 0xff && ISUTF8(ch)) {
 				insert_char(view->buf, ch);
 				nodelay(stdscr, TRUE);
