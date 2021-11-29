@@ -496,6 +496,8 @@ view_scroll(View *view, int off)
 void
 beginning_of_buffer(View *view)
 {
+	set_mark(view->buf);
+
 	view->buf->point = text_mark_set(view->buf->text, 0);
 	view->top = 0;
 }
@@ -503,6 +505,8 @@ beginning_of_buffer(View *view)
 void
 end_of_buffer(View *view)
 {
+	set_mark(view->buf);
+
 	view->buf->point = text_mark_set(view->buf->text,
 	    text_size(view->buf->text));
 
