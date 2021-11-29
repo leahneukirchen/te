@@ -20,6 +20,7 @@ todo:
 #include <string.h>
 
 #include <ncurses.h>
+#define KEY_DEL 0177
 
 #include "vis/array.h"
 #include "vis/text.h"
@@ -762,7 +763,7 @@ main(int argc, char *argv[])
 			undo(view->buf);
 			break;
 		case KEY_BACKSPACE:
-		case 127:
+		case KEY_DEL:
 			backspace(view->buf);
 			break;
 		case CTRL('x'):
