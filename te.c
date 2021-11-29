@@ -505,7 +505,12 @@ end_of_buffer(View *view)
 {
 	view->buf->point = text_mark_set(view->buf->text,
 	    text_size(view->buf->text));
-	recenter(view);   // XXX improve
+
+	ssize_t lineno = text_lineno_by_pos(view->buf->text,
+	    text_size(view->buf->text));
+
+	size_t top_lineno = MAX(1, lineno - (view->lines-3));
+	view->top = text_pos_by_lineno(view->buf->text, top_lineno);
 }
 
 void
