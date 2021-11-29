@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 #include <ncurses.h>
 #define KEY_DEL 0177
@@ -54,7 +55,7 @@ view_render(View *view)
 	size_t lineno = text_lineno_by_pos(view->buf->text, point);
 	size_t bol_point = text_pos_by_lineno(view->buf->text, lineno);
 
-	char buf[lines*cols*4];
+	char buf[lines*cols*4 + 8];
 	size_t top = view->top;
 	size_t len = text_bytes_get(view->buf->text, top, sizeof buf - 1, buf);
 	buf[len] = 0;
@@ -64,6 +65,7 @@ view_render(View *view)
 	move(0, 0);
 	int cur_y = lines, cur_x = cols;
 	size_t i;
+	mbstate_t mbstate = { 0 };
 	for (i = 0; i < len; i++) {
 		if (i == point - view->top) {
 			getyx(stdscr, cur_y, cur_x);
@@ -82,7 +84,26 @@ view_render(View *view)
 				}
 			}
 
-			if (buf[i] != '\t' && 0x00 <= buf[i] && buf[i] < 0x20) {
+			if ((unsigned char)buf[i] >= 0x80) {
+				/* detect invalid UTF-8 */
+				wchar_t wchar;
+				size_t len = mbrtowc(&wchar, buf+i, 8, &mbstate);
+				if (len == (size_t)-1 && errno == EILSEQ) {
+					mbstate = (mbstate_t){ 0 };
+					while (!ISUTF8(buf[i]))
+						i++;
+					addstr("\xEF\xBF\xBD");  // U+FFFD
+					continue;
+				} else if (len == (size_t)-2) {
+					/* I think -2 can't happen here? */
+					abort();
+				}
+
+				/* UTF-8 is valid, print at once */
+				addch((unsigned char)buf[i]);
+				while (!ISUTF8(buf[i+1]))
+					addch((unsigned char)buf[++i]);
+			} else if (buf[i] != '\t' && 0x00 <= buf[i] && buf[i] < 0x20) {
 				attron(A_BOLD);
 				addch('^');
 				addch('@' + buf[i]);
