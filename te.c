@@ -919,6 +919,9 @@ main(int argc, char *argv[])
 			{
 				int ch2 = getch();
 				switch(ch2) {
+				case 'u':
+					undo(view->buf);
+					break;
 				case CTRL('c'):
 					want_quit(view);
 					break;
@@ -928,11 +931,11 @@ main(int argc, char *argv[])
 				case CTRL('s'):
 					save(view->buf);
 					break;
-				case CTRL('x'):
-					exchange_point_mark(view->buf);
-					break;
 				case CTRL('w'):
 					save_as(view);
+					break;
+				case CTRL('x'):
+					exchange_point_mark(view->buf);
 					break;
 				default:
 					message("unknown key C-x %d", ch2);
