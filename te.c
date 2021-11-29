@@ -1049,6 +1049,12 @@ main(int argc, char *argv[])
 		case KEY_DEL:
 			backspace(view->buf);
 			break;
+		case KEY_HOME:
+			beginning_of_buffer(view);
+			break;
+		case KEY_END:
+			end_of_buffer(view);
+			break;
 		case CTRL('x'):
 			{
 				int ch2 = getch();
