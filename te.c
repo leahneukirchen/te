@@ -367,6 +367,8 @@ save_region(Buffer *buf)
 		point = mark;
 		mark = t;
 	}
+
+	save_range(buf, mark, point);
 }
 
 void
