@@ -49,6 +49,7 @@ view_render(View *view)
 	int lines = view->lines;
 	int cols = view->cols;
 
+missed:
 	erase();
 	move(0, 0);
 
@@ -128,6 +129,15 @@ view_render(View *view)
 		}
 	}
 	view->end = top + i;
+
+	if (point > view->end) {
+		/* When lots of line wrapping happened, we may not have reached
+		   point yet.  move view->top down 10 lines and try again. */
+		size_t top_lineno = text_lineno_by_pos(view->buf->text, top);
+		view->top = text_pos_by_lineno(view->buf->text, top_lineno + 10);
+
+		goto missed;
+	}
 
 	if (point == text_size(view->buf->text)) {
 		getyx(stdscr, cur_y, cur_x);
