@@ -809,6 +809,60 @@ capitalize_word(Buffer *buf)
 	buf->point = text_mark_set(buf->text, it.pos);
 }
 
+void
+magic_tab(Buffer *buf)
+{
+	size_t point = text_mark_get(buf->text, buf->point);
+	size_t pointbegin = text_line_begin(buf->text, point);
+	size_t pointstart = text_line_start(buf->text, pointbegin);
+
+	size_t prev = text_line_prev(buf->text, point);
+	size_t prevbegin = text_line_begin(buf->text, prev);
+	size_t prevend = text_line_end(buf->text, prev);
+
+	/* skip empty lines backward */
+	while (prevbegin == prevend) {
+		prev = text_line_prev(buf->text, prev);
+		prevbegin = text_line_begin(buf->text, prev);
+		prevend = text_line_end(buf->text, prev);
+	}
+
+	size_t prevstart = text_line_start(buf->text, prevbegin);
+
+	/* if prev line has no indent,
+	   or if cursor is at beginning of indent (but not at beginning of line)
+	   -> then forcibly indent
+	*/
+	if ((prevstart == prevbegin && point == pointbegin) ||
+	    (pointbegin != pointstart && point == pointstart)) {
+		insert_char(buf, '\t');
+		return;
+	}
+
+	/* else reindent the line by copying whitespace of previous line */
+
+	char *indent = text_bytes_alloc0(buf->text,
+	    prevbegin, prevstart - prevbegin);
+	char *old_indent = text_bytes_alloc0(buf->text,
+	    pointbegin, pointstart - pointbegin);
+
+	if (strcmp(indent, old_indent) != 0) {
+		record_undo(buf);
+
+		if (point < pointstart)
+			point = pointstart;
+		buf->point = text_mark_set(buf->text, point);
+
+		text_delete(buf->text, pointbegin, pointstart - pointbegin);
+		text_insert(buf->text, pointbegin, indent, strlen(indent));
+
+		update_target_column(buf);
+	}
+
+	free(indent);
+	free(old_indent);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -886,6 +940,9 @@ main(int argc, char *argv[])
 			break;
 		case CTRL('g'):
 			alert("Quit");
+			break;
+		case CTRL('i'):
+			magic_tab(view->buf);
 			break;
 		case CTRL('j'):
 		case CTRL('m'):
