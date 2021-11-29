@@ -67,9 +67,9 @@ view_render(View *view)
 	size_t i;
 	mbstate_t mbstate = { 0 };
 	for (i = 0; i < len; i++) {
-		if (i == point - view->top) {
+		int on_point = i == point - view->top;
+		if (on_point)
 			getyx(stdscr, cur_y, cur_x);
-		}
 		if (buf[i] == '\n') {
 			getyx(stdscr, line, col);
 			move(line + 1, 0);
@@ -79,9 +79,8 @@ view_render(View *view)
 			getyx(stdscr, line, col);
 			if (col == cols - 1) {
 				addch('\\');
-				if (i == point - view->top) {
+				if (on_point)
 					getyx(stdscr, cur_y, cur_x);
-				}
 			}
 
 			if ((unsigned char)buf[i] >= 0x80) {
