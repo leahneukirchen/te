@@ -1059,6 +1059,53 @@ search_forward(View *view)
 	free(whole_buffer);
 }
 
+void
+shell_command(View *view)
+{
+	Buffer *buf = view->buf;
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	static char last_command[1024];
+	static char command_line[1024];
+
+	char *answer = minibuffer_read(view, "Run:", last_command);
+	if (!answer)
+		return;
+	if (*answer)
+		strcpy(last_command, answer);
+
+	char *s = last_command;
+	char *t = command_line;
+	while (*s) {
+		if (*s == '%') {
+			s++;
+			const char *f = buf->file;
+			while ((*t++ = *f++))
+				;
+			t--;
+		} else {
+			*t++ = *s++;
+		}
+	}
+
+	endwin();
+	fprintf(stderr, "\n\n");
+
+	int status = system(command_line);
+
+	if (status > 0)
+		fprintf(stderr, "\nshell returned %d\n", WEXITSTATUS(status));
+	fprintf(stderr, "\nPress ENTER or type command to continue");
+
+	raw();
+	int ch = getch();
+	message("ch=%d", ch);
+	if (ch != ERR && ch != 13)
+		ungetch(ch);
+
+	view_render(view);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1238,6 +1285,9 @@ main(int argc, char *argv[])
 				int ch2 = getch();
 
 				switch (ch2) {
+				case '!':
+					shell_command(view);
+					break;
 				case '<':
 					beginning_of_buffer(view);
 					break;
