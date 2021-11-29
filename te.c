@@ -924,6 +924,33 @@ insert_byte(View *view)
 	insert_char(view->buf, byte);
 }
 
+void
+goto_line(View *view)
+{
+	Buffer *buf = view->buf;
+
+	char *answer = minibuffer_read(view, "Goto line:", "");
+	if (!answer || !*answer)
+		return;
+
+	char *rest;
+	long lineno = strtol(answer, &rest, 10);
+	if (*rest != 0) {
+		alert("Invalid input");
+		return;
+	}
+
+	size_t point;
+	if (lineno <= 0) {
+		point = 0;
+	} else {
+		point = text_pos_by_lineno(buf->text, lineno);
+		if (point == EPOS)
+			point = text_size(buf->text);
+	}
+	view->buf->point = text_mark_set(buf->text, point);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1066,6 +1093,9 @@ main(int argc, char *argv[])
 				case '8':
 					insert_byte(view);
 					break;
+				case 'g':
+					goto_line(view);
+					break;
 				case 'u':
 					undo(view->buf);
 					break;
@@ -1125,6 +1155,9 @@ main(int argc, char *argv[])
 				case 'f':
 				kRIT5:
 					forward_word(view->buf);
+					break;
+				case 'g':
+					goto_line(view);
 					break;
 				case 'v':
 					view_scroll(view, -(view->lines-2-2));
