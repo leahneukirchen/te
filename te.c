@@ -821,6 +821,12 @@ main(int argc, char *argv[])
 	keypad(stdscr, TRUE);
 	meta(stdscr, TRUE);
 
+	/* remove mapping of ^H to backspace, unless ^H is actually set
+	   as erase character.  This hack is required because many
+	   terminfo entries set kbs=^H even if ^? is send by the terminal. */
+	if (erasechar() != CTRL('h'))
+		define_key("\b", CTRL('h'));
+
 	view->buf = buf;
 	view->top = 0;
 	view->end = 0;
@@ -987,6 +993,8 @@ main(int argc, char *argv[])
 		default:
 			if (ch > KEY_MAX) {
 				const char *name = keyname(ch);
+				if (!name)
+					goto unknown;
 				if (strcmp(name, "kUP5") == 0)
 					goto kUP5;
 				else if (strcmp(name, "kDN5") == 0)
