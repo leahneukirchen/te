@@ -1,6 +1,6 @@
 CFLAGS=-DHAVE_MEMRCHR -Os -g -flto -Wall -Wextra -Wwrite-strings
 LDFLAGS=-flto
-LDLIBS=-lncurses
+LDLIBS=-lncurses -lpcre2-8
 
 te: te.o libtext.a
 	$(CC) $(LDFLAGS) -o $@ te.o libtext.a $(LDLIBS)

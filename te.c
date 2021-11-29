@@ -12,6 +12,9 @@
 #include <curses.h>
 #define KEY_DEL 0177
 
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+
 #include "vis/array.h"
 #include "vis/text.h"
 #include "vis/text-motions.h"
@@ -30,6 +33,9 @@ typedef struct {
 	size_t target_column;
 	Array point_history;
 	int modified;
+
+	size_t match_start;
+	size_t match_end;
 } Buffer;
 
 typedef struct {
@@ -75,10 +81,20 @@ missed:
 	int cur_y = lines, cur_x = cols;
 	size_t i;
 	mbstate_t mbstate = { 0 };
+
+	if (view->buf->match_end && view->buf->match_start < top)
+		attron(A_BOLD);
+
 	for (i = 0; i < len; i++) {
 		int on_point = i == point - top;
 		if (on_point)
 			getyx(stdscr, cur_y, cur_x);
+
+		if (i == view->buf->match_start - top)
+			attron(A_BOLD);
+		if (i == view->buf->match_end - top)
+			attroff(A_BOLD);
+
 		if (buf[i] == '\n') {
 			getyx(stdscr, line, col);
 			move(line + 1, 0);
@@ -129,6 +145,8 @@ missed:
 		}
 	}
 	view->end = top + i;
+
+	attroff(A_BOLD);
 
 	if (point > view->end) {
 		/* When lots of line wrapping happened, we may not have reached
@@ -627,6 +645,10 @@ minibuffer_read(View *view, const char *prompt, const char *prefill)
 		case CTRL('m'):
 			done = 1;
 			break;
+		case CTRL('s'):
+			done = 1;
+			ungetch(CTRL('s'));  // XXX HACK
+			break;
 		case KEY_BACKSPACE:
 		case KEY_DEL:
 			{
@@ -963,6 +985,80 @@ goto_line(View *view)
 	recenter(view);
 }
 
+void
+search_forward(View *view)
+{
+	Buffer *buf = view->buf;
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	static char search_term[1024];
+
+	char *answer = minibuffer_read(view, "Regexp search:", search_term);
+	if (!answer)
+		return;
+	if (*answer)
+		strcpy(search_term, answer);
+
+	// XXX benchmark and check when partial matching becomes useful
+	size_t len = text_size(buf->text);
+	char *whole_buffer = malloc(len);
+	if (!whole_buffer)
+		return;
+	text_bytes_get(buf->text, 0, len, whole_buffer);
+
+	pcre2_code *re;
+	int errornumber;
+	size_t erroroffset;
+
+	re = pcre2_compile(
+	    (unsigned char *)search_term, /* the pattern */
+	    PCRE2_ZERO_TERMINATED, /* indicates pattern is zero-terminated */
+	    PCRE2_MULTILINE | PCRE2_UTF | PCRE2_MATCH_INVALID_UTF,  /* default options */
+	    &errornumber,          /* for error number */
+	    &erroroffset,          /* for error offset */
+	    0);
+
+	if (!re) {
+		PCRE2_UCHAR buffer[256];
+		pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
+		alert("ERROR: %d: %s\n", (int)erroroffset, buffer);
+		return;
+	}
+
+	pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(re, 0);
+
+	int rc = pcre2_match(
+	    re,                   /* the compiled pattern */
+	    (unsigned char *)whole_buffer, /* the subject string */
+	    len,                  /* the length of the subject */
+	    point,                /* start search at point */
+	    PCRE2_NOTEMPTY,       /* default options */
+	    match_data,           /* block for storing the result */
+	    0);
+
+	if (rc < 0) {
+		if (rc == PCRE2_ERROR_NOMATCH) {
+			buf->match_start = buf->match_end = 0;
+			alert("No match found.");
+		} else {
+			alert("PCRE2 error %d", rc);
+		}
+	} else if (rc > 0) {
+		size_t *ovector = pcre2_get_ovector_pointer(match_data);
+
+		buf->match_start = ovector[0];
+		buf->match_end = ovector[1];
+		buf->point = text_mark_set(buf->text, buf->match_end);
+
+		if (view->top > buf->match_end || buf->match_end > view->end)
+			recenter(view); //?
+	}
+
+	pcre2_match_data_free(match_data);
+	pcre2_code_free(re);
+	free(whole_buffer);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -986,6 +1082,7 @@ main(int argc, char *argv[])
 	buf->point = buf->mark = text_mark_set(text, 0);
 	buf->target_column = 0;
 	buf->modified = 0;
+	buf->match_start = buf->match_end = 0;
 	array_init_sized(&buf->point_history, sizeof (Mark));
 
 	initscr();
@@ -1011,6 +1108,7 @@ main(int argc, char *argv[])
 
 		view_render(view);
 		message("");
+		view->buf->match_start = view->buf->match_end = 0;
 
 		int ch = getch();
 		switch (ch) {
@@ -1065,6 +1163,9 @@ main(int argc, char *argv[])
 			break;
 		case CTRL('q'):
 			quoted_insert(view->buf);
+			break;
+		case CTRL('s'):
+			search_forward(view);
 			break;
 		case CTRL('t'):
 			transpose_chars(view->buf);
