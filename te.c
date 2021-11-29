@@ -90,9 +90,11 @@ view_render(View *view)
 				size_t len = mbrtowc(&wchar, buf+i, 8, &mbstate);
 				if (len == (size_t)-1 && errno == EILSEQ) {
 					mbstate = (mbstate_t){ 0 };
-					while (!ISUTF8(buf[i]))
-						i++;
-					addstr("\xEF\xBF\xBD");  // U+FFFD
+					attron(A_REVERSE);
+					do {
+						printw("%02x", (unsigned char)buf[i]);
+					} while (!ISUTF8(buf[i++]));
+					attroff(A_REVERSE);
 					continue;
 				} else if (len == (size_t)-2) {
 					/* I think -2 can't happen here? */
