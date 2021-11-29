@@ -835,11 +835,19 @@ magic_tab(Buffer *buf)
 	*/
 	if ((prevstart == prevbegin && point == pointbegin) ||
 	    (pointbegin != pointstart && point == pointstart)) {
+		if (point < pointstart)
+			point = pointstart;
+		buf->point = text_mark_set(buf->text, point);
+
 		insert_char(buf, '\t');
 		return;
 	}
 
 	/* else reindent the line by copying whitespace of previous line */
+
+	if (point < pointstart)
+		point = pointstart;
+	buf->point = text_mark_set(buf->text, point);
 
 	char *indent = text_bytes_alloc0(buf->text,
 	    prevbegin, prevstart - prevbegin);
@@ -848,10 +856,6 @@ magic_tab(Buffer *buf)
 
 	if (strcmp(indent, old_indent) != 0) {
 		record_undo(buf);
-
-		if (point < pointstart)
-			point = pointstart;
-		buf->point = text_mark_set(buf->text, point);
 
 		text_delete(buf->text, pointbegin, pointstart - pointbegin);
 		text_insert(buf->text, pointbegin, indent, strlen(indent));
