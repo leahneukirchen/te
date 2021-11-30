@@ -59,6 +59,26 @@ Text *killring;
 
 
 void
+message(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(message_buf, sizeof message_buf, fmt, ap);
+	va_end(ap);
+}
+
+void
+alert(const char *fmt, ...)
+{
+	flash();
+
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(message_buf, sizeof message_buf, fmt, ap);
+	va_end(ap);
+}
+
+void
 view_render(View *view)
 {
 	int lines = view->lines;
@@ -203,26 +223,6 @@ missed:
 	move(cur_y, cur_x);
 
 	refresh();
-}
-
-void
-message(const char *fmt, ...)
-{
-	va_list ap;
-        va_start(ap, fmt);
-	vsnprintf(message_buf, sizeof message_buf, fmt, ap);
-        va_end(ap);
-}
-
-void
-alert(const char *fmt, ...)
-{
-	flash();
-
-	va_list ap;
-        va_start(ap, fmt);
-	vsnprintf(message_buf, sizeof message_buf, fmt, ap);
-        va_end(ap);
 }
 
 static void
