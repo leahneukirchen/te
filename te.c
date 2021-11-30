@@ -41,6 +41,7 @@ typedef struct {
 		ACTION_INSERT,
 		ACTION_BACKSPACE,
 		ACTION_KILL_EOL,
+		ACTION_KILL_WORD,
 	} last_action;
 } Buffer;
 
@@ -899,19 +900,20 @@ forward_word(Buffer *buf)
 void
 kill_word(Buffer *buf)
 {
+	int append = buf->last_action == ACTION_KILL_WORD;
+
 	record_undo(buf);
 
 	size_t from = text_mark_get(buf->text, buf->point);
 	forward_word(buf);
 	size_t to = text_mark_get(buf->text, buf->point);
 
-	save_range(buf, from, to, 0);
+	save_range(buf, from, to, append);
 	text_delete(buf->text, from, to - from);
-	// XXX append to kill ring
 
 	buf->point = text_mark_set(buf->text, from);
 
-	buf->last_action = ACTION_OTHER;
+	buf->last_action = ACTION_KILL_WORD;
 }
 
 void
