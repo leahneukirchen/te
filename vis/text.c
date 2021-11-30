@@ -986,7 +986,13 @@ size_t text_undo_emacs(Text *txt, int n) {
 	n = n*2 + 1;
 	while (n--)
 		pos = text_earlier(txt);
+
+	int modified = text_modified(txt);
 	/* force storage as latest */
 	change_alloc(txt, EPOS);
+	text_snapshot(txt);
+	if (!modified)
+		txt->saved_revision = txt->history;
+
 	return pos;
 }
