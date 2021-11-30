@@ -573,7 +573,7 @@ view_scroll(View *view, int off)
 void
 beginning_of_buffer(View *view)
 {
-	Buffer *buf = buf;
+	Buffer *buf = view->buf;
 
 	set_mark(buf);
 
