@@ -39,6 +39,7 @@ typedef struct {
 	enum {
 		ACTION_OTHER,
 		ACTION_INSERT,
+		ACTION_YANK,
 		ACTION_BACKSPACE,
 		ACTION_KILL_EOL,
 		ACTION_KILL_WORD,
@@ -628,6 +629,11 @@ void
 yank(Buffer *buf)
 {
 	size_t point = text_mark_get(buf->text, buf->point);
+
+	/* reset killring to latest addition */
+	while (text_later(killring) != EPOS)
+		;
+
 	if (text_size(killring)) {
 		record_undo(buf);
 
@@ -643,7 +649,46 @@ yank(Buffer *buf)
 		buf->point = text_mark_set(buf->text, point + len);
 	}
 
-	buf->last_action = ACTION_OTHER;
+	buf->last_action = ACTION_YANK;
+}
+
+void
+yank_pop(Buffer *buf)
+{
+	if (buf->last_action != ACTION_YANK) {
+		alert("Previous command was not a yank");
+		return;
+	}
+
+	/* ring buffer */
+	if (text_earlier(killring) == EPOS) {
+		while (text_later(killring) != EPOS)
+			;
+	}
+
+	if (!text_size(killring))
+		return;
+
+	record_undo(buf);
+
+	size_t point = text_mark_get(buf->text, buf->point);
+	/* previous insertion point */
+	size_t mark = text_mark_get(buf->text, buf->mark);
+
+	size_t len = text_size(killring);
+	char *killstr = malloc(len);
+	if (!killstr)
+		return;
+	text_bytes_get(killring, 0, len, killstr);
+
+	text_delete(buf->text, mark, point - mark);
+	point = mark;
+	text_insert(buf->text, point, killstr, len);
+
+	buf->mark = text_mark_set(buf->text, point);
+	buf->point = text_mark_set(buf->text, point + len);
+
+	buf->last_action = ACTION_YANK; /* ! */
 }
 
 void
@@ -1428,6 +1473,9 @@ main(int argc, char *argv[])
 					break;
 				case 'w':
 					kill_region_save(view);
+					break;
+				case 'y':
+					yank_pop(buf);
 					break;
 				case KEY_BACKSPACE:
 				case KEY_DEL:
