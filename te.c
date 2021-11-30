@@ -629,6 +629,8 @@ yank(Buffer *buf)
 {
 	size_t point = text_mark_get(buf->text, buf->point);
 	if (text_size(killring)) {
+		record_undo(buf);
+
 		size_t len = text_size(killring);
 		char *killstr = malloc(len);
 		if (!killstr)
