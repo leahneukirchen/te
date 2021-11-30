@@ -79,6 +79,16 @@ alert(const char *fmt, ...)
 }
 
 void
+window_title(const char *title)
+{
+	if (title)		/* push and set title */
+		dprintf(1, "\e[22t\e]0;te: %s\007", title);
+	else			/* pop title stack */
+		dprintf(1, "\e[23t");
+
+}
+
+void
 view_render(View *view)
 {
 	int lines = view->lines;
@@ -1284,6 +1294,8 @@ main(int argc, char *argv[])
 	keypad(stdscr, TRUE);
 	meta(stdscr, TRUE);
 
+	window_title(buf->file);
+
 	/* remove mapping of ^H to backspace, unless ^H is actually set
 	   as erase character.  This hack is required because many
 	   terminfo entries set kbs=^H even if ^? is send by the terminal. */
@@ -1529,6 +1541,7 @@ main(int argc, char *argv[])
 	}
 
 	endwin();
+	window_title(0);
 
 	return 0;
 }
