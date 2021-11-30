@@ -40,6 +40,7 @@ typedef struct {
 		ACTION_OTHER,
 		ACTION_INSERT,
 		ACTION_BACKSPACE,
+		ACTION_KILL_EOL,
 	} last_action;
 } Buffer;
 
@@ -335,8 +336,6 @@ record_undo(Buffer *buf)
 	array_push(&buf->point_history, &mark);
 
 	text_snapshot(buf->text);
-
-	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -426,7 +425,7 @@ set_mark(Buffer *buf)
 }
 
 static void
-save_range(Buffer *buf, size_t from, size_t to)
+save_range(Buffer *buf, size_t from, size_t to, int pend)
 {
 	size_t len = to - from;
 	char *killstr = malloc(len);
@@ -434,9 +433,13 @@ save_range(Buffer *buf, size_t from, size_t to)
 		return;
 	text_bytes_get(buf->text, from, len, killstr);
 
-	text_snapshot(killring);
-	text_delete(killring, 0, text_size(killring));
-	text_insert(killring, 0, killstr, len);
+	if (pend == 0) {  /* replace */
+		text_snapshot(killring);
+		text_delete(killring, 0, text_size(killring));
+		text_insert(killring, 0, killstr, len);
+	} else if (pend == 1) { /* append */
+		text_insert(killring, text_size(killring), killstr, len);
+	}
 
 	free(killstr);
 }
@@ -453,7 +456,7 @@ save_region(Buffer *buf)
 		mark = t;
 	}
 
-	save_range(buf, mark, point);
+	save_range(buf, mark, point, 0);
 }
 
 void
@@ -649,14 +652,12 @@ kill_eol(Buffer *buf)
 	if (point == bol || point == eol)
 		eol = text_line_next(buf->text, point);  // kill entire line
 
-	save_range(buf, point, eol);
+	save_range(buf, point, eol, buf->last_action == ACTION_KILL_EOL);
 
 	text_delete(buf->text, point, eol - point);
 	buf->point = text_mark_set(buf->text, point);
 
-	// XXX append to kill ring
-
-	buf->last_action = ACTION_OTHER;
+	buf->last_action = ACTION_KILL_EOL;
 }
 
 void
@@ -904,7 +905,7 @@ kill_word(Buffer *buf)
 	forward_word(buf);
 	size_t to = text_mark_get(buf->text, buf->point);
 
-	save_range(buf, from, to);
+	save_range(buf, from, to, 0);
 	text_delete(buf->text, from, to - from);
 	// XXX append to kill ring
 
@@ -922,7 +923,7 @@ backward_kill_word(Buffer *buf)
 	backward_word(buf);
 	size_t from = text_mark_get(buf->text, buf->point);
 
-	save_range(buf, from, to);
+	save_range(buf, from, to, 0);
 	text_delete(buf->text, from, to - from);
 	// XXX prepend to kill ring
 
