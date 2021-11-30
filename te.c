@@ -890,7 +890,6 @@ kill_word(Buffer *buf)
 
 	save_range(buf, from, to);
 	text_delete(buf->text, from, to - from);
-	// XXX GNU emacs doesn't delete beyond EOL
 	// XXX append to kill ring
 
 	buf->point = text_mark_set(buf->text, from);
@@ -909,7 +908,7 @@ backward_kill_word(Buffer *buf)
 
 	save_range(buf, from, to);
 	text_delete(buf->text, from, to - from);
-	// XXX append to kill ring
+	// XXX prepend to kill ring
 
 	buf->point = text_mark_set(buf->text, from);
 
