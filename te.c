@@ -51,7 +51,7 @@ typedef struct {
 } View;
 
 char message_buf[128];
-char *killring;  // XXX make actual ring
+Text *killring;
 
 
 void
@@ -428,8 +428,17 @@ set_mark(Buffer *buf)
 static void
 save_range(Buffer *buf, size_t from, size_t to)
 {
-	free(killring);
-	killring = text_bytes_alloc0(buf->text, from, to - from);
+	size_t len = to - from;
+	char *killstr = malloc(len);
+	if (!killstr)
+		return;
+	text_bytes_get(buf->text, from, len, killstr);
+
+	text_snapshot(killring);
+	text_delete(killring, 0, text_size(killring));
+	text_insert(killring, 0, killstr, len);
+
+	free(killstr);
 }
 
 
@@ -612,11 +621,16 @@ void
 yank(Buffer *buf)
 {
 	size_t point = text_mark_get(buf->text, buf->point);
-	if (killring) {
-		// XXX NUL-byte safety.
-		size_t len = strlen(killring);
-		text_insert(buf->text, point, killring, len);
+	if (text_size(killring)) {
+		size_t len = text_size(killring);
+		char *killstr = malloc(len);
+		if (!killstr)
+			return;
+		text_bytes_get(killring, 0, len, killstr);
 
+		text_insert(buf->text, point, killstr, len);
+
+		buf->mark = text_mark_set(buf->text, point);
 		buf->point = text_mark_set(buf->text, point + len);
 	}
 
@@ -639,6 +653,8 @@ kill_eol(Buffer *buf)
 
 	text_delete(buf->text, point, eol - point);
 	buf->point = text_mark_set(buf->text, point);
+
+	// XXX append to kill ring
 
 	buf->last_action = ACTION_OTHER;
 }
@@ -1186,6 +1202,8 @@ main(int argc, char *argv[])
 {
 	setlocale(LC_ALL, "");  // XXX force UTF-8 somehow for ncurses to work
 	message("");
+
+	killring = text_load(0);
 
 	const char *file = argc == 2 ? argv[1] : "README.md";
 	Text *text = text_load(file);
