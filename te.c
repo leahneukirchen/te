@@ -35,6 +35,12 @@ typedef struct {
 
 	size_t match_start;
 	size_t match_end;
+
+	enum {
+		ACTION_OTHER,
+		ACTION_INSERT,
+		ACTION_BACKSPACE,
+	} last_action;
 } Buffer;
 
 typedef struct {
@@ -223,6 +229,8 @@ recenter(View *view)
 
 	size_t top_lineno = MAX(1, lineno - (view->lines-2)/2);
 	view->top = text_pos_by_lineno(view->buf->text, top_lineno);
+
+	view->buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -257,6 +265,8 @@ move_line(View *view, int off)
 	if (point < view->top || point > view->end) {
 		recenter(view);
 	}
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -283,6 +293,8 @@ move_char(Buffer *buf, int off)
 
 	buf->point = text_mark_set(buf->text, point);
 	update_target_column(buf);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -308,6 +320,9 @@ move_paragraph(Buffer *buf, int off)
 	}
 
 	buf->point = text_mark_set(buf->text, point);
+
+	buf->last_action = ACTION_OTHER;
+
 }
 
 static void
@@ -320,24 +335,30 @@ record_undo(Buffer *buf)
 	array_push(&buf->point_history, &mark);
 
 	text_snapshot(buf->text);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
 insert_char(Buffer *buf, int ch)
 {
-	record_undo(buf);  // TODO debounce
+	if (buf->last_action != ACTION_INSERT)
+		record_undo(buf);
 
 	size_t point = text_mark_get(buf->text, buf->point);
 	const char c = {ch};
 	text_insert(buf->text, point, &c, 1);
 
 	update_target_column(buf);
+
+	buf->last_action = ACTION_INSERT;
 }
 
 void
 backspace(Buffer *buf)
 {
-	record_undo(buf);  // TODO debounce
+	if (buf->last_action != ACTION_BACKSPACE)
+		record_undo(buf);
 
 	size_t point = text_mark_get(buf->text, buf->point);
 	size_t prev = text_char_prev(buf->text, point);
@@ -350,6 +371,8 @@ backspace(Buffer *buf)
 	buf->point = text_mark_set(buf->text, prev);
 
 	update_target_column(buf);
+
+	buf->last_action = ACTION_BACKSPACE;
 }
 
 void
@@ -366,6 +389,8 @@ delete(Buffer *buf)
 
 	text_delete(buf->text, point, next - point);
 	buf->point = text_mark_set(buf->text, point);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -375,6 +400,8 @@ move_bol(Buffer *buf)
 	point = text_line_begin(buf->text, point);
 	buf->point = text_mark_set(buf->text, point);
 	update_target_column(buf);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -384,6 +411,8 @@ move_eol(Buffer *buf)
 	point = text_line_end(buf->text, point);
 	buf->point = text_mark_set(buf->text, point);
 	update_target_column(buf);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -392,6 +421,8 @@ set_mark(Buffer *buf)
 	// XXX implement mark ring
 	buf->mark = buf->point;
 	message("Mark set");
+
+	buf->last_action = ACTION_OTHER;
 }
 
 static void
@@ -439,6 +470,8 @@ kill_region(Buffer *buf)
 
 	buf->point = buf->mark = text_mark_set(buf->text, mark);
 	update_target_column(buf);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -464,6 +497,8 @@ kill_region_save(View *view)
 	raw();
 
 	buf->point = point;
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -520,25 +555,31 @@ view_scroll(View *view, int off)
 void
 beginning_of_buffer(View *view)
 {
-	set_mark(view->buf);
+	Buffer *buf = buf;
 
-	view->buf->point = text_mark_set(view->buf->text, 0);
+	set_mark(buf);
+
+	buf->point = text_mark_set(buf->text, 0);
 	view->top = 0;
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
 end_of_buffer(View *view)
 {
-	set_mark(view->buf);
+	Buffer *buf = view->buf;
 
-	view->buf->point = text_mark_set(view->buf->text,
-	    text_size(view->buf->text));
+	set_mark(buf);
 
-	ssize_t lineno = text_lineno_by_pos(view->buf->text,
-	    text_size(view->buf->text));
+	buf->point = text_mark_set(buf->text, text_size(buf->text));
+
+	ssize_t lineno = text_lineno_by_pos(buf->text, text_size(buf->text));
 
 	size_t top_lineno = MAX(1, lineno - (view->lines-3));
-	view->top = text_pos_by_lineno(view->buf->text, top_lineno);
+	view->top = text_pos_by_lineno(buf->text, top_lineno);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -550,17 +591,21 @@ undo(Buffer *buf)
 		return;
 	}
 
-	size_t mark = *(size_t *)array_pop(&buf->point_history);
-	buf->mark = text_mark_set(buf->text, mark);
+	if (array_length(&buf->point_history) > 2) {
+		size_t mark = *(size_t *)array_pop(&buf->point_history);
+		buf->mark = text_mark_set(buf->text, mark);
 
-	size_t point = *(size_t *)array_pop(&buf->point_history);
-	buf->point = text_mark_set(buf->text, point);
+		size_t point = *(size_t *)array_pop(&buf->point_history);
+		buf->point = text_mark_set(buf->text, point);
+	}
 
 	// XXX for redo, need to preserve cursors somewhere.
 
 	// XXX how to do emacs-style undo tree? text_earlier?
 
 	message("Undo");
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -574,6 +619,8 @@ yank(Buffer *buf)
 
 		buf->point = text_mark_set(buf->text, point + len);
 	}
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -592,6 +639,8 @@ kill_eol(Buffer *buf)
 
 	text_delete(buf->text, point, eol - point);
 	buf->point = text_mark_set(buf->text, point);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -600,6 +649,8 @@ exchange_point_mark(Buffer *buf)
 	Mark t = buf->mark;
 	buf->mark = buf->point;
 	buf->point = t;
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -610,11 +661,15 @@ save(Buffer *buf)
 	} else {
 		alert("ERROR: Saving failed! %s: %s", buf->file, strerror(errno));
 	}
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
 background(View *view)
 {
+	view->buf->last_action = ACTION_OTHER;
+
 	endwin();
 	raise(SIGSTOP);
 	view_render(view);
@@ -712,6 +767,8 @@ want_quit(View *view) {
 	} else {
 		quit = 1;
 	}
+
+	view->buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -732,6 +789,8 @@ quoted_insert(Buffer *buf)
 	} else {
 		alert("Not an ASCII byte");
 	}
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -767,6 +826,8 @@ transpose_chars(Buffer *buf)
 		point = text_char_next(buf->text, point);
 
 	buf->point = text_mark_set(buf->text, point);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 static int
@@ -797,6 +858,8 @@ backward_word(Buffer *buf)
 	text_iterator_char_next(&it, &c);
 
 	buf->point = text_mark_set(buf->text, it.pos);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -812,6 +875,8 @@ forward_word(Buffer *buf)
 		;
 
 	buf->point = text_mark_set(buf->text, it.pos);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -829,6 +894,8 @@ kill_word(Buffer *buf)
 	// XXX append to kill ring
 
 	buf->point = text_mark_set(buf->text, from);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -845,6 +912,8 @@ backward_kill_word(Buffer *buf)
 	// XXX append to kill ring
 
 	buf->point = text_mark_set(buf->text, from);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -875,6 +944,8 @@ capitalize_word(Buffer *buf)
 	}
 
 	buf->point = text_mark_set(buf->text, it.pos);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -933,6 +1004,8 @@ magic_tab(Buffer *buf)
 
 	free(indent);
 	free(old_indent);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -950,6 +1023,8 @@ insert_byte(View *view)
 	}
 
 	insert_char(view->buf, byte);
+
+	view->buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -979,6 +1054,8 @@ goto_line(View *view)
 	view->buf->point = text_mark_set(buf->text, point);
 
 	recenter(view);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -1053,6 +1130,8 @@ search_forward(View *view)
 	pcre2_match_data_free(match_data);
 	pcre2_code_free(re);
 	free(whole_buffer);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 void
@@ -1099,6 +1178,8 @@ shell_command(View *view)
 		ungetch(ch);
 
 	view_render(view);
+
+	buf->last_action = ACTION_OTHER;
 }
 
 int
