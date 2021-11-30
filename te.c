@@ -32,7 +32,6 @@ typedef struct {
 	Mark mark;
 	size_t target_column;
 	Array point_history;
-	int modified;
 
 	size_t match_start;
 	size_t match_end;
@@ -174,7 +173,7 @@ missed:
 	}
 
 	mvprintw(lines - 2, 0, "--%s- %s -- L%ld C%ld B%ld/%ld",
-	    view->buf->modified ? "**" : "--",
+	    text_modified(view->buf->text) ? "**" : "--",
 	    view->buf->file,
 	    lineno,
 	    point - bol_point + 1,
@@ -314,8 +313,6 @@ move_paragraph(Buffer *buf, int off)
 static void
 record_undo(Buffer *buf)
 {
-	buf->modified = 1;
-
 	size_t point = text_mark_get(buf->text, buf->point);
 	array_push(&buf->point_history, &point);
 
@@ -610,7 +607,6 @@ save(Buffer *buf)
 {
 	if (text_save_method(buf->text, buf->file, TEXT_SAVE_ATOMIC)) {
 		message("Wrote %s", buf->file);
-		buf->modified = 0;
 	} else {
 		alert("ERROR: Saving failed! %s: %s", buf->file, strerror(errno));
 	}
@@ -709,7 +705,7 @@ int quit;
 
 void
 want_quit(View *view) {
-	if (view->buf->modified) {
+	if (text_modified(view->buf->text)) {
 		if (yes_or_no_p(view,
 		    "Modified buffers exist; really exit? (yes or no)"))
 			quit = 1;
@@ -1128,7 +1124,6 @@ main(int argc, char *argv[])
 	buf->text = text;
 	buf->point = buf->mark = text_mark_set(text, 0);
 	buf->target_column = 0;
-	buf->modified = 0;
 	buf->match_start = buf->match_end = 0;
 	array_init_sized(&buf->point_history, sizeof (Mark));
 
