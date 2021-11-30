@@ -15,9 +15,9 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
-#include "vis/array.h"
 #include "vis/text.h"
 #include "vis/text-motions.h"
+size_t text_undo_emacs(Text *txt, int n);
 
 #define MIN(a, b)  ((a) > (b) ? (b) : (a))
 #define MAX(a, b)  ((a) < (b) ? (b) : (a))
@@ -31,7 +31,6 @@ typedef struct {
 	Mark point;
 	Mark mark;
 	size_t target_column;
-	Array point_history;
 
 	size_t match_start;
 	size_t match_end;
@@ -40,6 +39,7 @@ typedef struct {
 		ACTION_OTHER,
 		ACTION_INSERT,
 		ACTION_YANK,
+		ACTION_UNDO,
 		ACTION_BACKSPACE,
 		ACTION_KILL_EOL,
 		ACTION_KILL_WORD,
@@ -74,6 +74,13 @@ missed:
 
 	char buf[lines*cols*4 + 8];
 	size_t top = view->top;
+
+	if (point == EPOS) {
+		/* we somehow lost track of point, let's keep it visible */
+		message("Huh.");
+		point = top;
+		view->buf->point = text_mark_set(view->buf->text, point);
+	}
 
 	if ((int)(point - bol_point) > (lines-3)*(cols-1)) {
 		top = point - (lines-3)*(cols-1);
@@ -332,12 +339,6 @@ move_paragraph(Buffer *buf, int off)
 static void
 record_undo(Buffer *buf)
 {
-	size_t point = text_mark_get(buf->text, buf->point);
-	array_push(&buf->point_history, &point);
-
-	size_t mark = text_mark_get(buf->text, buf->mark);
-	array_push(&buf->point_history, &mark);
-
 	text_snapshot(buf->text);
 }
 
@@ -602,27 +603,26 @@ end_of_buffer(View *view)
 void
 undo(Buffer *buf)
 {
-	size_t u = text_undo(buf->text);
-	if (u == EPOS) {
-		alert("No further undo information");
-		return;
-	}
+	static int n;
 
-	if (array_length(&buf->point_history) > 2) {
-		size_t mark = *(size_t *)array_pop(&buf->point_history);
-		buf->mark = text_mark_set(buf->text, mark);
+	if (buf->last_action == ACTION_UNDO)
+		n++;
+	else
+		n = 0;
 
-		size_t point = *(size_t *)array_pop(&buf->point_history);
-		buf->point = text_mark_set(buf->text, point);
-	}
+	size_t u = text_undo_emacs(buf->text, n);
 
-	// XXX for redo, need to preserve cursors somewhere.
+	record_undo(buf);
 
-	// XXX how to do emacs-style undo tree? text_earlier?
+	buf->mark = 0;
+	buf->point = text_mark_set(buf->text, u == EPOS ? 0 : u);
 
-	message("Undo");
+	if (u == EPOS)
+		message("No further undo information");
+	else
+		message("Undo");
 
-	buf->last_action = ACTION_OTHER;
+	buf->last_action = ACTION_UNDO;
 }
 
 void
@@ -1276,7 +1276,6 @@ main(int argc, char *argv[])
 	buf->point = buf->mark = text_mark_set(text, 0);
 	buf->target_column = 0;
 	buf->match_start = buf->match_end = 0;
-	array_init_sized(&buf->point_history, sizeof (Mark));
 
 	initscr();
 	raw();
@@ -1296,6 +1295,7 @@ main(int argc, char *argv[])
 	view->end = 0;
 	getmaxyx(stdscr, view->lines, view->cols);
 
+	int ch = 0;
 	while (!quit) {
 		getmaxyx(stdscr, view->lines, view->cols);
 
@@ -1303,7 +1303,7 @@ main(int argc, char *argv[])
 		message("");
 		view->buf->match_start = view->buf->match_end = 0;
 
-		int ch = getch();
+		ch = getch();
 		switch (ch) {
 		case CTRL(' '):
 			set_mark(view->buf);

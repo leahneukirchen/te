@@ -975,3 +975,18 @@ size_t text_mark_get(const Text *txt, Mark mark) {
 
 	return EPOS;
 }
+
+//-----------------------------------------------------------------------------
+// custom hacks for te
+
+size_t text_undo_emacs(Text *txt, int n) {
+	size_t pos = 0;
+	while (pos != EPOS)
+		pos = text_later(txt);
+	n = n*2 + 1;
+	while (n--)
+		pos = text_earlier(txt);
+	/* force storage as latest */
+	change_alloc(txt, EPOS);
+	return pos;
+}
