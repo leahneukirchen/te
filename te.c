@@ -1059,7 +1059,6 @@ void
 shell_command(View *view)
 {
 	Buffer *buf = view->buf;
-	size_t point = text_mark_get(buf->text, buf->point);
 
 	static char last_command[1024];
 	static char command_line[1024];
