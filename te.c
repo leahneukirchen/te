@@ -91,6 +91,8 @@ window_title(const char *title)
 void
 view_render(View *view)
 {
+	Buffer *buf = view->buf;
+
 	int lines = view->lines;
 	int cols = view->cols;
 
@@ -98,18 +100,18 @@ missed:
 	erase();
 	move(0, 0);
 
-	size_t point = text_mark_get(view->buf->text, view->buf->point);
-	size_t lineno = text_lineno_by_pos(view->buf->text, point);
-	size_t bol_point = text_pos_by_lineno(view->buf->text, lineno);
+	size_t point = text_mark_get(buf->text, buf->point);
+	size_t lineno = text_lineno_by_pos(buf->text, point);
+	size_t bol_point = text_pos_by_lineno(buf->text, lineno);
 
-	char buf[lines*cols*4 + 8];
+	char buffer[lines*cols*4 + 8];
 	size_t top = view->top;
 
 	if (point == EPOS) {
 		/* we somehow lost track of point, let's keep it visible */
 		message("Huh.");
 		point = top;
-		view->buf->point = text_mark_set(view->buf->text, point);
+		buf->point = text_mark_set(buf->text, point);
 	}
 
 	if ((int)(point - bol_point) > (lines-3)*(cols-1)) {
@@ -119,8 +121,8 @@ missed:
 		attroff(A_REVERSE);
 	}
 
-	size_t len = text_bytes_get(view->buf->text, top, sizeof buf - 1, buf);
-	buf[len] = 0;
+	size_t len = text_bytes_get(buf->text, top, sizeof buffer - 1, buffer);
+	buffer[len] = 0;
 
 	/* This is a bit more complicated than in vi, because emacs
 	   higlights closing brackets when the cursor is after them,
@@ -128,13 +130,13 @@ missed:
 	Filerange limits = { view->top, view->top + len };
 	int highlight_brackets;
 	size_t highlight_point;
-	size_t pos_match = text_bracket_match_symbol(view->buf->text,
+	size_t pos_match = text_bracket_match_symbol(buf->text,
 	    point - 1, "(){}[]\"'`", &limits);
 	if (pos_match != point - 1) {
 		highlight_brackets = pos_match < point;   /* opening? */
 		highlight_point = point - 1;
 	} else {
-		pos_match = text_bracket_match_symbol(view->buf->text,
+		pos_match = text_bracket_match_symbol(buf->text,
 		    point, "(){}[]\"'`", &limits);
 		highlight_brackets = pos_match > point;   /* closing? */
 		highlight_point = point;
@@ -146,7 +148,7 @@ missed:
 	size_t i;
 	mbstate_t mbstate = { 0 };
 
-	if (view->buf->match_end && view->buf->match_start < top)
+	if (buf->match_end && buf->match_start < top)
 		attron(A_BOLD);
 
 	for (i = 0; i < len; i++) {
@@ -155,16 +157,16 @@ missed:
 			getyx(stdscr, cur_y, cur_x);
 		int on_highlight_point = i == highlight_point - top;
 
-		if (i == view->buf->match_start - top)
+		if (i == buf->match_start - top)
 			attron(A_BOLD);
-		if (i == view->buf->match_end - top)
+		if (i == buf->match_end - top)
 			attroff(A_BOLD);
 
 		if (highlight_brackets)
 			if (on_highlight_point || i == pos_match - top)
 				attron(A_BOLD);
 
-		if (buf[i] == '\n') {
+		if (buffer[i] == '\n') {
 			getyx(stdscr, line, col);
 			move(line + 1, 0);
 			if (line == lines - 3)
@@ -180,14 +182,14 @@ missed:
 					break;
 			}
 
-			if ((unsigned char)buf[i] >= 0x80) {
+			if ((unsigned char)buffer[i] >= 0x80) {
 				/* detect invalid UTF-8 */
 				wchar_t wchar;
-				size_t len = mbrtowc(&wchar, buf+i, 8, &mbstate);
+				size_t len = mbrtowc(&wchar, buffer+i, 8, &mbstate);
 				if (len == (size_t)-1 && errno == EILSEQ) {
 					mbstate = (mbstate_t){ 0 };
 					attron(A_REVERSE);
-					printw("%02x", (unsigned char)buf[i]);
+					printw("%02x", (unsigned char)buffer[i]);
 					attroff(A_REVERSE);
 					continue;
 				} else if (len == (size_t)-2) {
@@ -196,20 +198,20 @@ missed:
 				}
 
 				/* UTF-8 is valid, print at once */
-				addnstr(buf+i, len);
+				addnstr(buffer+i, len);
 				i += len - 1;
-			} else if (buf[i] != '\t' && 0x00 <= buf[i] && buf[i] < 0x20) {
+			} else if (buffer[i] != '\t' && 0x00 <= buffer[i] && buffer[i] < 0x20) {
 				attron(A_BOLD);
 				addch('^');
-				addch('@' + buf[i]);
+				addch('@' + buffer[i]);
 				attroff(A_BOLD);
-			} else if (buf[i] == 0x7f) {
+			} else if (buffer[i] == 0x7f) {
 				attron(A_BOLD);
 				addch('^');
 				addch('?');
 				attroff(A_BOLD);
 			} else {
-				addch((unsigned char)buf[i]);
+				addch((unsigned char)buffer[i]);
 			}
 		}
 
@@ -224,15 +226,15 @@ missed:
 	if (point > view->end) {
 		/* When lots of line wrapping happened, we may not have reached
 		   point yet.  move view->top down 10 lines and try again. */
-		size_t top_lineno = text_lineno_by_pos(view->buf->text, top);
-		view->top = text_pos_by_lineno(view->buf->text, top_lineno + 10);
+		size_t top_lineno = text_lineno_by_pos(buf->text, top);
+		view->top = text_pos_by_lineno(buf->text, top_lineno + 10);
 
 		goto missed;
 	}
 
-	if (point == text_size(view->buf->text)) {
+	if (point == text_size(buf->text)) {
 		getyx(stdscr, cur_y, cur_x);
-		if (buf[i-1] == '\n') {
+		if (buffer[i-1] == '\n') {
 			addch(' ');
 			line++;
 		} else {
@@ -247,12 +249,12 @@ missed:
 	}
 
 	mvprintw(lines - 2, 0, "--%s- %s -- L%ld C%ld B%ld/%ld",
-	    text_modified(view->buf->text) ? "**" : "--",
-	    view->buf->file,
+	    text_modified(buf->text) ? "**" : "--",
+	    buf->file,
 	    lineno,
 	    point - bol_point + 1,
 	    point,
-	    text_size(view->buf->text)
+	    text_size(buf->text)
 	);
 	mvchgat(lines - 2, 0, view->cols, A_REVERSE, 0, 0);
 	mvprintw(lines - 1, 0, "%s", message_buf);
@@ -272,13 +274,15 @@ update_target_column(Buffer *buf)
 void
 recenter(View *view)
 {
-	size_t point = text_mark_get(view->buf->text, view->buf->point);
-	ssize_t lineno = text_lineno_by_pos(view->buf->text, point);
+	Buffer *buf = view->buf;
+
+	size_t point = text_mark_get(buf->text, buf->point);
+	ssize_t lineno = text_lineno_by_pos(buf->text, point);
 
 	size_t top_lineno = MAX(1, lineno - (view->lines-2)/2);
-	view->top = text_pos_by_lineno(view->buf->text, top_lineno);
+	view->top = text_pos_by_lineno(buf->text, top_lineno);
 
-	view->buf->last_action = ACTION_OTHER;
+	buf->last_action = ACTION_OTHER;
 }
 
 void
