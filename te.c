@@ -122,6 +122,24 @@ missed:
 	size_t len = text_bytes_get(view->buf->text, top, sizeof buf - 1, buf);
 	buf[len] = 0;
 
+	/* This is a bit more complicated than in vi, because emacs
+	   higlights closing brackets when the cursor is after them,
+	   but opening ones when the cursor is on them. */
+	Filerange limits = { view->top, view->top + len };
+	int highlight_brackets;
+	size_t highlight_point;
+	size_t pos_match = text_bracket_match_symbol(view->buf->text,
+	    point - 1, "(){}[]\"'`", &limits);
+	if (pos_match != point - 1) {
+		highlight_brackets = pos_match < point;   /* opening? */
+		highlight_point = point - 1;
+	} else {
+		pos_match = text_bracket_match_symbol(view->buf->text,
+		    point, "(){}[]\"'`", &limits);
+		highlight_brackets = pos_match > point;   /* closing? */
+		highlight_point = point;
+	}
+
 	int line = 0;
 	int col = 0;
 	int cur_y = lines, cur_x = cols;
@@ -135,11 +153,16 @@ missed:
 		int on_point = i == point - top;
 		if (on_point)
 			getyx(stdscr, cur_y, cur_x);
+		int on_highlight_point = i == highlight_point - top;
 
 		if (i == view->buf->match_start - top)
 			attron(A_BOLD);
 		if (i == view->buf->match_end - top)
 			attroff(A_BOLD);
+
+		if (highlight_brackets)
+			if (on_highlight_point || i == pos_match - top)
+				attron(A_BOLD);
 
 		if (buf[i] == '\n') {
 			getyx(stdscr, line, col);
@@ -189,6 +212,10 @@ missed:
 				addch((unsigned char)buf[i]);
 			}
 		}
+
+		if (highlight_brackets)
+			if (on_highlight_point || i == pos_match - top)
+				attroff(A_BOLD);
 	}
 	view->end = top + i;
 
