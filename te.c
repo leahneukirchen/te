@@ -359,7 +359,7 @@ insert_char(Buffer *buf, int ch)
 		record_undo(buf);
 
 	size_t point = text_mark_get(buf->text, buf->point);
-	const char c = {ch};
+	const char c = ch;
 	text_insert(buf->text, point, &c, 1);
 
 	update_target_column(buf);
@@ -1028,6 +1028,43 @@ capitalize_word(Buffer *buf)
 }
 
 void
+just_one_space(Buffer *buf)
+{
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	record_undo(buf);
+
+	char cn, cp;
+        Iterator it = text_iterator_get(buf->text, point);
+	text_iterator_char_prev(&it, &cp);
+	text_iterator_char_next(&it, &cn);
+
+	if (cn != ' ' && cn != '\t' &&
+	    cp != ' ' && cp != '\t') { /* insert just one space */
+		point = it.pos;
+	} else {
+		if (cp == ' ' || cp == '\t') {
+			while (cp == ' ' || cp == '\t')
+				text_iterator_char_prev(&it, &cp);
+			text_iterator_char_next(&it, &cp);
+		}
+
+		point = it.pos;
+
+		while (text_iterator_char_next(&it, &cn) &&
+		    (cn == ' ' || cn == '\t'))
+			;
+
+		text_delete(buf->text, point, it.pos - point);
+	}
+
+	text_insert(buf->text, point, " ", 1);
+	buf->point = text_mark_set(buf->text, point + 1);
+
+	buf->last_action = ACTION_OTHER;
+}
+
+void
 magic_tab(Buffer *buf)
 {
 	size_t point = text_mark_get(buf->text, buf->point);
@@ -1443,6 +1480,9 @@ main(int argc, char *argv[])
 				int ch2 = getch();
 
 				switch (ch2) {
+				case ' ':
+					just_one_space(view->buf);
+					break;
 				case '!':
 					shell_command(view);
 					break;
