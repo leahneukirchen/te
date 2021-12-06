@@ -702,10 +702,12 @@ yank_pop(Buffer *buf)
 	}
 
 	/* ring buffer */
-	if (text_earlier(killring) == EPOS) {
+	if (text_earlier(killring) == EPOS)
 		while (text_later(killring) != EPOS)
 			;
-	}
+	if (!text_modified(killring))   /* skip the empty initial buffer */
+		while (text_later(killring) != EPOS)
+			;
 
 	if (!text_size(killring))
 		return;
