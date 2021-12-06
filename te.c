@@ -27,6 +27,7 @@ size_t text_undo_emacs(Text *txt, int n);
 
 typedef struct {
 	const char *file;
+	const char *name;
 	Text *text;
 	Mark point;
 	Mark mark;
@@ -250,7 +251,7 @@ missed:
 
 	mvprintw(lines - 2, 0, "--%s- %s -- L%ld C%ld B%ld/%ld",
 	    text_modified(buf->text) ? "**" : "--",
-	    buf->file,
+	    buf->name,
 	    lineno,
 	    point - bol_point + 1,
 	    point,
@@ -767,6 +768,11 @@ exchange_point_mark(Buffer *buf)
 void
 save(Buffer *buf)
 {
+	if (!buf->file) {
+		alert("Buffer has no filename.");
+		return;
+	}
+
 	if (text_save_method(buf->text, buf->file, TEXT_SAVE_ATOMIC)) {
 		message("Wrote %s", buf->file);
 	} else {
@@ -843,7 +849,7 @@ save_as(View *view)
 {
 	Buffer *buf = view->buf;
 	char *new_file;
-	new_file = minibuffer_read(view, "Write file:", buf->file);
+	new_file = minibuffer_read(view, "Write file:", buf->file ? buf->file : "");
 	if (!new_file)
 		return;
 
@@ -1302,7 +1308,7 @@ shell_command(View *view)
 	while (*s) {
 		if (*s == '%') {
 			s++;
-			const char *f = buf->file;
+			const char *f = buf->file ? buf->file : "";
 			while ((*t++ = *f++))
 				;
 			t--;
@@ -1352,6 +1358,11 @@ main(int argc, char *argv[])
 	View *view = malloc (sizeof *view);
 
 	buf->file = file;
+	buf->name = strrchr(file, '/');
+	if (buf->name)
+		buf->name++;
+	else
+		buf->name = file;
 	buf->text = text;
 	buf->point = buf->mark = text_mark_set(text, 0);
 	buf->target_column = 0;
@@ -1364,7 +1375,7 @@ main(int argc, char *argv[])
 	keypad(stdscr, TRUE);
 	meta(stdscr, TRUE);
 
-	window_title(buf->file);
+	window_title(buf->name);
 
 	/* remove mapping of ^H to backspace, unless ^H is actually set
 	   as erase character.  This hack is required because many
