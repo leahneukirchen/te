@@ -1164,6 +1164,29 @@ magic_tab(Buffer *buf)
 }
 
 void
+open_line(Buffer *buf)
+{
+	record_undo(buf);
+
+	size_t point = text_mark_get(buf->text, buf->point);
+	size_t bol = text_line_start(buf->text, point);
+	size_t sol = text_line_begin(buf->text, point);
+	size_t eol = text_line_end(buf->text, point);
+
+	text_insert(buf->text, point, "\n", 1);
+
+	if (point != eol && sol != bol) {
+		/* indent new line below as this one */
+		buf->point = text_mark_set(buf->text, point + 1);
+		magic_tab(buf);
+	}
+
+	buf->point = text_mark_set(buf->text, point);
+
+	buf->last_action = ACTION_OTHER;
+}
+
+void
 insert_byte(View *view)
 {
 	char *answer = minibuffer_read(view, "Insert byte (hex):", "");
@@ -1442,6 +1465,9 @@ main(int argc, char *argv[])
 		case CTRL('n'):
 		case KEY_DOWN:
 			move_line(view, +1);
+			break;
+		case CTRL('o'):
+			open_line(view->buf);
 			break;
 		case CTRL('p'):
 		case KEY_UP:
