@@ -1237,7 +1237,7 @@ goto_line(View *view)
 }
 
 void
-search_forward(View *view)
+re_search_forward(View *view)
 {
 	Buffer *buf = view->buf;
 	size_t point = text_mark_get(buf->text, buf->point);
@@ -1310,6 +1310,117 @@ search_forward(View *view)
 	free(whole_buffer);
 
 	buf->last_action = ACTION_OTHER;
+}
+
+void
+isearch(View *view, int dir)
+{
+	// XXX keep last search term
+
+	Buffer *buf = view->buf;
+	size_t point = text_mark_get(buf->text, buf->point);
+	size_t initial_point = point;
+	size_t search_point = point;
+
+	static char term[1024];
+	memset(term, 0, sizeof term);
+
+	int failed = 0;
+	int cur_x, cur_y;
+
+	buf->match_start = buf->match_end = 0;
+
+	while (1) {
+		getyx(stdscr, cur_y, cur_x);
+
+		move(view->lines - 1, 0);
+		clrtoeol();
+		printw("%s%s: %s",
+		    failed ? "Failing I-search" : "I-search",
+		    dir == +1 ? "" : " backward",
+		    term);
+
+		move(cur_y, cur_x);  /* move cursor to point */
+		refresh();
+
+		int ch = getch();
+		switch (ch) {
+		case CTRL('g'):
+			alert("Quit");
+			buf->point = text_mark_set(buf->text, point);
+			buf->match_start = buf->match_end = 0;
+			return;
+		case CTRL('s'):
+			dir = +1;
+			if (buf->match_end)
+				search_point = buf->match_end + 1;
+			break;
+		case CTRL('r'):
+			dir = -1;
+			if (buf->match_end)
+				search_point = buf->match_end - 1;
+			break;
+		case CTRL('u'):
+			*term = 0;
+			break;
+		case KEY_BACKSPACE:
+		case KEY_DEL:
+			{
+				size_t l = strlen(term);
+				if (l)
+					term[l-1] = 0;
+			}
+			break;
+		default:
+			if (0x20 <= ch && ch < 0x7f) {
+				size_t l = strlen(term);
+				term[l] = ch;
+				term[l+1] = 0;
+			} else if (ch > 0) {
+				buf->mark = text_mark_set(buf->text, initial_point);
+				message("Mark saved where search started");
+				buf->match_start = buf->match_end = 0;
+
+				if (ch >= 0x80)
+					ungetch(ch);
+				return;
+			}
+		}
+
+		size_t found;
+again:
+		if (strlen(term) > 0) {
+			if (dir == +1)
+				found = text_find_next(buf->text, search_point, term);
+			else
+				found = text_find_prev(buf->text, search_point, term);
+
+			if (found == search_point) {
+				if (!failed) {
+					flash();
+					failed = 1;
+				} else {
+					search_point = dir == +1 ? 0 :
+					    text_size(buf->text);
+					failed = 0;
+					goto again;
+				}
+			} else {
+				failed = 0;
+				buf->match_start = found;
+				buf->match_end = found + strlen(term);
+				buf->point = text_mark_set(buf->text, buf->match_end);
+				update_target_column(buf);
+			}
+		} else {
+			buf->match_start = buf->match_end = 0;
+			search_point = initial_point;
+			buf->point = text_mark_set(buf->text, search_point);
+			update_target_column(buf);
+		}
+
+		view_render(view);
+	}
 }
 
 void
@@ -1476,8 +1587,11 @@ main(int argc, char *argv[])
 		case CTRL('q'):
 			quoted_insert(view->buf);
 			break;
+		case CTRL('r'):
+			isearch(view, -1);
+			break;
 		case CTRL('s'):
-			search_forward(view);
+			isearch(view, +1);
 			break;
 		case CTRL('t'):
 			transpose_chars(view->buf);
@@ -1572,6 +1686,9 @@ main(int argc, char *argv[])
 					break;
 				case CTRL('g'):
 					alert("Quit");
+					break;
+				case CTRL('s'):
+					re_search_forward(view);
 					break;
 				case 'b':
 				kLFT5:
