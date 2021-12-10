@@ -1236,6 +1236,8 @@ goto_line(View *view)
 	buf->last_action = ACTION_OTHER;
 }
 
+static size_t do_re_search_forward(Buffer *buf, char *search_term, size_t point);
+
 void
 re_search_forward(View *view)
 {
@@ -1250,11 +1252,91 @@ re_search_forward(View *view)
 	if (*answer)
 		strcpy(search_term, answer);
 
+	size_t found = do_re_search_forward(buf, search_term, point);
+	if (found == EPOS) {
+		alert("No match found.");
+	} else {
+		buf->point = text_mark_set(buf->text, buf->match_end);
+
+		if (view->top > buf->match_end || buf->match_end > view->end)
+			recenter(view); //?
+	}
+
+	buf->last_action = ACTION_OTHER;
+}
+
+void
+re_search_backward(View *view)
+{
+	Buffer *buf = view->buf;
+	size_t point = text_mark_get(buf->text, buf->point);
+
+	static char search_term[1024];
+
+	char *answer = minibuffer_read(view, "Regexp search backward:",
+	    search_term);
+	if (!answer)
+		return;
+	if (*answer)
+		strcpy(search_term, answer);
+
+	size_t lookback = 1;
+
+	while (lookback <= point) {
+		size_t found = do_re_search_forward(buf, search_term,
+		    point - lookback);
+
+		if (found == EPOS || buf->match_end >= point) {
+			if (lookback * 2 > point)
+				lookback *= 2;
+			else if (lookback == point)
+				lookback++;
+			else
+				lookback = point;
+		} else {
+			break;
+		}
+	}
+
+	if (lookback > point) {
+		alert("No match found.");
+		buf->point = text_mark_set(buf->text, point);
+	} else {		// found a match, but there may be a later one.
+		size_t found_at = buf->match_end;
+		size_t match_start = buf->match_start;
+		size_t match_end = buf->match_end;
+
+		while (1) {
+			size_t found_again = do_re_search_forward(buf,
+			    search_term, found_at);
+
+			if (found_again == EPOS || buf->match_end >= point)
+				break;
+
+			found_at = found_again + 1;
+			match_start = buf->match_start;
+			match_end = buf->match_end;
+		}
+
+		buf->match_start = match_start;
+		buf->match_end = match_end;
+		buf->point = text_mark_set(buf->text, buf->match_end);
+
+		if (view->top > buf->match_end || buf->match_end > view->end)
+			recenter(view); //?
+	}
+
+	buf->last_action = ACTION_OTHER;
+}
+
+static size_t
+do_re_search_forward(Buffer *buf, char *search_term, size_t point)
+{
 	// XXX benchmark and check when partial matching becomes useful
 	size_t len = text_size(buf->text);
 	char *whole_buffer = malloc(len);
 	if (!whole_buffer)
-		return;
+		return EPOS;
 	text_bytes_get(buf->text, 0, len, whole_buffer);
 
 	pcre2_code *re;
@@ -1273,7 +1355,8 @@ re_search_forward(View *view)
 		PCRE2_UCHAR buffer[256];
 		pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
 		alert("ERROR: %d: %s\n", (int)erroroffset, buffer);
-		return;
+
+		return EPOS;
 	}
 
 	pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(re, 0);
@@ -1287,10 +1370,12 @@ re_search_forward(View *view)
 	    match_data,           /* block for storing the result */
 	    0);
 
+	size_t found;
+
 	if (rc < 0) {
+		found = EPOS;
 		if (rc == PCRE2_ERROR_NOMATCH) {
 			buf->match_start = buf->match_end = 0;
-			alert("No match found.");
 		} else {
 			alert("PCRE2 error %d", rc);
 		}
@@ -1299,17 +1384,15 @@ re_search_forward(View *view)
 
 		buf->match_start = ovector[0];
 		buf->match_end = ovector[1];
-		buf->point = text_mark_set(buf->text, buf->match_end);
 
-		if (view->top > buf->match_end || buf->match_end > view->end)
-			recenter(view); //?
+		found = ovector[0];
 	}
 
 	pcre2_match_data_free(match_data);
 	pcre2_code_free(re);
 	free(whole_buffer);
 
-	buf->last_action = ACTION_OTHER;
+	return found;
 }
 
 void
@@ -1686,6 +1769,9 @@ main(int argc, char *argv[])
 					break;
 				case CTRL('g'):
 					alert("Quit");
+					break;
+				case CTRL('r'):
+					re_search_backward(view);
 					break;
 				case CTRL('s'):
 					re_search_forward(view);
