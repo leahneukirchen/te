@@ -1236,7 +1236,7 @@ goto_line(View *view)
 	buf->last_action = ACTION_OTHER;
 }
 
-static size_t do_re_search_forward(Buffer *buf, char *search_term, size_t point);
+static size_t do_re_search_forward(Buffer *buf, char *search_term, size_t point, size_t point_max);
 
 void
 re_search_forward(View *view)
@@ -1252,7 +1252,8 @@ re_search_forward(View *view)
 	if (*answer)
 		strcpy(search_term, answer);
 
-	size_t found = do_re_search_forward(buf, search_term, point);
+	size_t found = do_re_search_forward(buf, search_term,
+	    point, text_size(buf->text));
 	if (found == EPOS) {
 		flash();
 	} else {
@@ -1284,7 +1285,7 @@ re_search_backward(View *view)
 
 	while (lookback <= point) {
 		size_t found = do_re_search_forward(buf, search_term,
-		    point - lookback);
+		    point - lookback, point);
 
 		if (found == EPOS || buf->match_end >= point) {
 			if (lookback * 2 < point)
@@ -1300,6 +1301,7 @@ re_search_backward(View *view)
 
 	if (lookback > point) {
 		alert("No match found.");
+		buf->match_start = buf->match_end = 0;
 		buf->point = text_mark_set(buf->text, point);
 	} else {		// found a match, but there may be a later one.
 		size_t found_at = buf->match_end;
@@ -1308,7 +1310,7 @@ re_search_backward(View *view)
 
 		while (1) {
 			size_t found_again = do_re_search_forward(buf,
-			    search_term, found_at);
+			    search_term, found_at, point);
 
 			if (found_again == EPOS || buf->match_end >= point)
 				break;
@@ -1332,7 +1334,7 @@ re_search_backward(View *view)
 }
 
 static size_t
-do_re_search_forward(Buffer *buf, char *search_term, size_t point)
+do_re_search_forward(Buffer *buf, char *search_term, size_t point, size_t point_max)
 {
 	size_t len = 4 * 4096;
 	char *search_buffer = malloc(len);
@@ -1366,7 +1368,7 @@ do_re_search_forward(Buffer *buf, char *search_term, size_t point)
 	int rc = PCRE2_ERROR_NOMATCH;
 	size_t start_offset = 0;
 
-	while (point < text_size(buf->text)) {
+	while (point < point_max) {
 		size_t slen =
 		    text_bytes_get(buf->text, point, len, search_buffer);
 
