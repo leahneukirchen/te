@@ -1254,7 +1254,7 @@ re_search_forward(View *view)
 
 	size_t found = do_re_search_forward(buf, search_term, point);
 	if (found == EPOS) {
-		alert("No match found.");
+		flash();
 	} else {
 		buf->point = text_mark_set(buf->text, buf->match_end);
 
@@ -1280,14 +1280,14 @@ re_search_backward(View *view)
 	if (*answer)
 		strcpy(search_term, answer);
 
-	size_t lookback = 1;
+	size_t lookback = MIN(point, 64);
 
 	while (lookback <= point) {
 		size_t found = do_re_search_forward(buf, search_term,
 		    point - lookback);
 
 		if (found == EPOS || buf->match_end >= point) {
-			if (lookback * 2 > point)
+			if (lookback * 2 < point)
 				lookback *= 2;
 			else if (lookback == point)
 				lookback++;
@@ -1324,6 +1324,8 @@ re_search_backward(View *view)
 
 		if (view->top > buf->match_end || buf->match_end > view->end)
 			recenter(view); //?
+
+		message("");
 	}
 
 	buf->last_action = ACTION_OTHER;
@@ -1332,12 +1334,10 @@ re_search_backward(View *view)
 static size_t
 do_re_search_forward(Buffer *buf, char *search_term, size_t point)
 {
-	// XXX benchmark and check when partial matching becomes useful
-	size_t len = text_size(buf->text);
-	char *whole_buffer = malloc(len);
-	if (!whole_buffer)
+	size_t len = 4 * 4096;
+	char *search_buffer = malloc(len);
+	if (!search_buffer)
 		return EPOS;
-	text_bytes_get(buf->text, 0, len, whole_buffer);
 
 	pcre2_code *re;
 	int errornumber;
@@ -1354,43 +1354,91 @@ do_re_search_forward(Buffer *buf, char *search_term, size_t point)
 	if (!re) {
 		PCRE2_UCHAR buffer[256];
 		pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
-		alert("ERROR: %d: %s\n", (int)erroroffset, buffer);
+		message("ERROR: %jd: %s\n", erroroffset, buffer);
 
 		return EPOS;
 	}
 
-	pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(re, 0);
-
-	int rc = pcre2_match(
-	    re,                   /* the compiled pattern */
-	    (unsigned char *)whole_buffer, /* the subject string */
-	    len,                  /* the length of the subject */
-	    point,                /* start search at point */
-	    PCRE2_NOTEMPTY,       /* default options */
-	    match_data,           /* block for storing the result */
-	    0);
+	pcre2_match_data *match_data =
+	    pcre2_match_data_create_from_pattern(re, 0);
 
 	size_t found;
+	int rc = PCRE2_ERROR_NOMATCH;
+	size_t start_offset = 0;
+
+	while (point < text_size(buf->text)) {
+		size_t slen =
+		    text_bytes_get(buf->text, point, len, search_buffer);
+
+		/* XXX TODO: make start_offset != 0 when point > 0
+		   so that \A only matches for point == 0 */
+		/* XXX compute NOTEOL ?? needed */
+
+		rc = pcre2_match(
+		    re,                   /* the compiled pattern */
+		    (unsigned char *)search_buffer, /* the subject string */
+		    slen,                 /* the length of the subject */
+		    start_offset,         /* start search at point */
+		    PCRE2_PARTIAL_HARD |
+		      (point == 0 ? 0 : PCRE2_NOTEMPTY_ATSTART | PCRE2_NOTBOL),
+		    match_data,           /* block for storing the result */
+		    0);
+
+		if (rc < 0) {
+			found = EPOS;
+			if (rc == PCRE2_ERROR_NOMATCH) {
+				start_offset = 0;
+				point += slen; // try next chunk
+				len = 4 * 4096;
+				// do not realloc, will shrink below
+			} else if (rc == PCRE2_ERROR_PARTIAL) {
+				size_t *ovector = pcre2_get_ovector_pointer(match_data);
+
+				if (ovector[1] == slen &&
+				    point + slen >= text_size(buf->text)) {
+					/* final match at end of buffer */
+					rc = 1;
+					goto match_til_eob;
+				}
+
+				start_offset = ovector[0];
+
+				char *new_buffer = realloc(search_buffer, len*2);
+				if (new_buffer) {
+					len *= 2;
+					search_buffer = new_buffer;
+				}
+			} else {
+				break;
+			}
+		} else if (rc > 0) {
+			size_t *ovector;
+match_til_eob:
+			ovector = pcre2_get_ovector_pointer(match_data);
+
+			buf->match_start = point + ovector[0];
+			buf->match_end = point + ovector[1];
+
+			found = point + ovector[0];
+
+			break; // LEAK match_data
+		}
+	}
 
 	if (rc < 0) {
 		found = EPOS;
 		if (rc == PCRE2_ERROR_NOMATCH) {
+			message("No match found.");
 			buf->match_start = buf->match_end = 0;
 		} else {
-			alert("PCRE2 error %d", rc);
+			message("PCRE2 error %d", rc);
+			flash();
 		}
-	} else if (rc > 0) {
-		size_t *ovector = pcre2_get_ovector_pointer(match_data);
-
-		buf->match_start = ovector[0];
-		buf->match_end = ovector[1];
-
-		found = ovector[0];
 	}
 
 	pcre2_match_data_free(match_data);
 	pcre2_code_free(re);
-	free(whole_buffer);
+	free(search_buffer);
 
 	return found;
 }
